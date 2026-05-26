@@ -38,7 +38,6 @@
     block_group_n=,
     group_name=,
     strata_block_n=,
-    strata_name=,
     strata_hierarchy=
 );
     %local _meth _gcount _bcount _scount _sbcount;
@@ -65,27 +64,24 @@
     %end;
 
     %if &_meth = STRATIFIED %then %do;
-        %if %sysevalf(%superq(strata_hierarchy)^=,boolean) %then %do;
-            data _null_;
-                length _h $2000 _piece $500 _levels $500;
-                _h = symget('strata_hierarchy');
-                _fcount = countw(_h, '|');
-                _product = 1;
-                do _k = 1 to _fcount;
-                    _piece = scan(_h, _k, '|');
-                    _levels = scan(_piece, 2, '=');
-                    _lvn = countw(_levels, ',');
-                    if _lvn <= 0 then _lvn = 0;
-                    _product = _product * _lvn;
-                end;
-                call symputx('_scount', _product, 'l');
-            run;
-        %end;
-        %else %do;
-            %let _scount=%sysfunc(countw(%superq(strata_name),|));
-        %end;
+        %rt_assert(cond=%sysevalf(%superq(strata_hierarchy)^=,boolean),
+                   msg=STRATIFIED 模式下必须提供 strata_hierarchy);
+        data _null_;
+            length _h $2000 _piece $500 _levels $500;
+            _h = symget('strata_hierarchy');
+            _fcount = countw(_h, '|');
+            _product = 1;
+            do _k = 1 to _fcount;
+                _piece = scan(_h, _k, '|');
+                _levels = scan(_piece, 2, '=');
+                _lvn = countw(_levels, ',');
+                if _lvn <= 0 then _lvn = 0;
+                _product = _product * _lvn;
+            end;
+            call symputx('_scount', _product, 'l');
+        run;
         %let _sbcount=%sysfunc(countw(%superq(strata_block_n),%str( )));
-        %rt_assert(cond=%sysevalf(&_scount > 0), msg=STRATIFIED 需提供 strata_name 或 strata_hierarchy);
+        %rt_assert(cond=%sysevalf(&_scount > 0), msg=STRATIFIED 需提供有效 strata_hierarchy);
         %rt_assert(cond=%sysevalf(&_scount = &_sbcount), msg=分层总数 与 strata_block_n 长度不一致);
     %end;
 %MEND rt_validate_inputs;
@@ -160,7 +156,6 @@
     block_group_n=,
     group_name=,
     strata_block_n=,
-    strata_name=%str( ),
     strata_hierarchy=%str( ),
     prefix=NA,
     ID_add=0,
@@ -181,7 +176,6 @@
         block_group_n=&block_group_n,
         group_name=&group_name,
         strata_block_n=&strata_block_n,
-        strata_name=&strata_name,
         strata_hierarchy=&strata_hierarchy
     );
 
@@ -230,7 +224,7 @@
     %end;
 
     %let _gcount=%sysfunc(countw(%superq(group_name),|));
-    %let _scount=%sysfunc(countw(%superq(strata_name),|));
+    %let _scount=0;
 
     /* Step 1: 生成区组模板(每个区组内组别占比) */
     data _block_template;
@@ -280,22 +274,10 @@
 
     /* Step 3: 分层(如适用) */
     %if &_meth = STRATIFIED %then %do;
-        %if %sysevalf(%superq(strata_hierarchy)^=,boolean) %then %do;
-            %rt_build_strata_from_hierarchy(
-                strata_hierarchy=&strata_hierarchy,
-                out_ds=_strata_meta
-            );
-        %end;
-        %else %do;
-            data _strata_meta;
-                length Stratum_Name $1000;
-                %do _i=1 %to &_scount;
-                    Stratum_Num=&_i;
-                    Stratum_Name="%qscan(%superq(strata_name),&_i,|)";
-                    output;
-                %end;
-            run;
-        %end;
+        %rt_build_strata_from_hierarchy(
+            strata_hierarchy=&strata_hierarchy,
+            out_ds=_strata_meta
+        );
 
         data _strata_layout;
             length Stratum_Name $1000;
@@ -402,7 +384,7 @@
 
     %if %upcase(&save_audit)=Y %then %do;
         data "&RT_PATH/randomization_audit_cohort&cohort_No";
-            length protocol_name $200 type $32 method $20 group_name $500 strata_name $500 strata_hierarchy $1000;
+            length protocol_name $200 type $32 method $20 group_name $500 strata_hierarchy $1000;
             protocol_name = symget('protocol_name');
             type="&type";
             cohort_no=&cohort_No;
@@ -411,7 +393,6 @@
             block_group_n="&block_group_n";
             group_name="%superq(group_name)";
             strata_block_n="&strata_block_n";
-            strata_name="%superq(strata_name)";
             strata_hierarchy="%superq(strata_hierarchy)";
             seed_plan=&&Seed_&type._cohort&cohort_No._PLAN;
             seed_plan_time="&&Datetime_&type._cohort&cohort_No._PLAN";

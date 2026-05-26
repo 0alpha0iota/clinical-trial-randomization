@@ -29,16 +29,15 @@ This repository now contains a production-oriented SAS randomization framework b
 - `BLOCKING`
 - `STRATIFIED`
 
-## Multi-hierarchy stratification
+## Multi-hierarchy stratification (industry-standard)
 
-`STRATIFIED` mode supports two ways:
+`STRATIFIED` mode uses hierarchical factor definitions only:  
+`strata_hierarchy=%str(Factor1=L1,L2|Factor2=A,B,C|Factor3=X,Y)`
 
-1. Flat strata names: `strata_name=%str(S1|S2|S3)`
-2. Hierarchical strata auto-expansion (recommended for multi-factor trials):  
-   `strata_hierarchy=%str(Region=CN,US|Sex=M,F|Stage=II,III)`
+The engine expands strata by cartesian product across factors.  
+For example, if one factor has 3 levels and another has 4 levels, final strata count is `3*4=12` unique combination strata.
 
-For hierarchical mode, the engine builds the cartesian product of factors (here `2*2*2=8` strata).  
-Then `strata_block_n` must provide exactly one block-count per generated stratum (8 integers in this example).
+`strata_block_n` must provide exactly one block-count per generated combination stratum.
 
 ## Key industrial controls
 
@@ -46,7 +45,7 @@ Then `strata_block_n` must provide exactly one block-count per generated stratum
    - Validates method enumerations
    - Validates positive sample size and ratios
    - Validates consistency between names and ratio vectors
-   - Validates consistency between generated strata count and `strata_block_n`
+   - Validates consistency between generated combination-strata count and `strata_block_n`
 
 2. **Reproducibility**
    - Supports `seed_mode_plan=FIXED` and `seed_mode_strata=FIXED`

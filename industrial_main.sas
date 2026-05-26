@@ -33,17 +33,17 @@
 );
 
 /* =============================== EXAMPLE CALL =============================== */
-/* 该示例与原程序风格保持一致：分层区组，2组(4:2)，N=96 */
+/* 该示例采用行业标准多因子分层：3*4=12组合分层，2组(4:2)，N=72 */
 %randomization_table_industrial(
     type=subject,
     cohort_No=1,
     cohort_name=%str( ),
     randomization_method=STRATIFIED,
-    N=96,
+    N=72,
     block_group_n=4 2,
     group_name=%str(试验组|对照组),
-    strata_block_n=2 7 7,
-    strata_name=%str(PD层|PK采血层|非PK采血层),
+    strata_hierarchy=%str(Age=18-40,41-60,>60|Region=North,South,East,West),
+    strata_block_n=1 1 1 1 1 1 1 1 1 1 1 1,
     prefix=R,
     ID_add=0,
     sub_id_offset=100,
