@@ -33,17 +33,17 @@
 );
 
 /* =============================== EXAMPLE CALL =============================== */
-/* 该示例与原程序风格保持一致：分层区组，2组(4:2)，N=96 */
+/* 该示例采用行业标准多因子分层：3*4=12组合分层，2组(4:2)，N=72 */
 %randomization_table_industrial(
     type=subject,
     cohort_No=1,
     cohort_name=%str( ),
     randomization_method=STRATIFIED,
-    N=96,
+    N=72,
     block_group_n=4 2,
     group_name=%str(试验组|对照组),
-    strata_block_n=2 7 7,
-    strata_name=%str(PD层|PK采血层|非PK采血层),
+    strata_hierarchy=%str(Age=18-40,41-60,>60|Region=North,South,East,West),
+    strata_block_n=1 1 1 1 1 1 1 1 1 1 1 1,
     prefix=R,
     ID_add=0,
     sub_id_offset=100,
@@ -57,17 +57,27 @@
 
 /* ============================ OPTIONAL EXTRA CALLS =========================== */
 /*
+多层分层示例：
+strata_hierarchy = %str(Region=CN,US|Sex=M,F|Stage=II,III)
+表示自动生成 2*2*2 = 8 个分层；
+strata_block_n 需要提供8个整数，对应各组合分层的区组数。
+*/
+/*
 %randomization_table_industrial(
     type=drug,
     cohort_No=1,
-    randomization_method=BLOCKING,
-    N=60,
-    block_group_n=1 1 1,
-    group_name=%str(A|B|C),
+    randomization_method=STRATIFIED,
+    N=96,
+    block_group_n=1 1,
+    group_name=%str(A|B),
+    strata_hierarchy=%str(Region=CN,US|Sex=M,F|Stage=II,III),
+    strata_block_n=2 2 2 2 1 1 3 3,
     prefix=D,
     rand_width=5,
     seed_mode_plan=FIXED,
     set_seed_plan=20260423,
+    seed_mode_strata=FIXED,
+    set_seed_strata=20260424,
     save_audit=Y
 );
 */
