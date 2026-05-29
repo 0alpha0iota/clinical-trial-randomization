@@ -6,6 +6,8 @@ This repository now contains a production-oriented SAS randomization framework b
 
 - Preserve core output fields and workflow style from the original program:
   - `Rand_ID`, `Rand_sub_ID`, `Group`, `Group_Num`, `block`, `size`
+- Preserve the original clinical-trial table-generation approach by using `PROC PLAN` as the core plan generator
+- Preserve the original `%setpaths` behavior in `industrial_main.sas` so outputs default to the previous-level folder of the program location
 - Upgrade to enterprise-grade usage with:
   - modular macros
   - strong parameter assertions

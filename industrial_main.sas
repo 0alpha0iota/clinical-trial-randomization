@@ -10,7 +10,39 @@
 /*  3) 结果输出在 blind_code_test/<run_date>/cohort_info                  */
 /************************************************************************/
 
+
+/* %MACRO locating previous-level folder of directory where program is stored */
+/* save the path as &_root. */
+/* Beginner note: this block is copied from the original main.sas. It lets the */
+/* program find a default project root without hard-coding a local computer path. */
+%MACRO setpaths;
+%global _root  ;
+%if %symexist(_SASPROGRAMFILE) %then %do;
+    %let current_path = %sysfunc(reverse(%substr(
+        %sysfunc(reverse(&_SASPROGRAMFILE)), 
+        %eval(%index(%sysfunc(reverse(&_SASPROGRAMFILE)), /)) +1
+    )));
+    %let setup_= %upcase(&current_path.);
+    %let curpath =%qsysfunc(ksubstr(%quote(&setup_),1,%eval(%sysfunc(klength(%quote(&setup_))) -  %sysfunc(klength(%sysfunc(kscan(%quote(&setup_),-1,'\'))))  -2 ) ))  ;
+
+    /* remove possible quotes */
+    %let curpath = %sysfunc(compress(&curpath., %str(%')));
+    %let _root = %ksubstr(%quote(&curpath.),1,%eval(%kindex(%quote(&curpath.),%kscan(%quote(&curpath.),-1,\))-2));
+%end;
+
+%else %do;
+
+    %let _fullpath=%sysfunc(getoption(sysin));
+    %if "&_fullpath." eq "" %then %let _fullpath=%sysget(sas_execfilepath);
+    %let _root=%ksubstr(%quote(&_fullpath.),1,%eval(%kindex(%quote(&_fullpath.),%kscan(%quote(&_fullpath.),-2,\))-2));
+%end;
+%MEND;
+%setpaths;
+%put &_root.; /* check path */
+
 /* ============================== INCLUDE MACROS ============================== */
+/* %include reads another SAS program into this program at run time. */
+/* Keep macro definitions in separate files so the main driver remains short. */
 %include "./macros/seed_utils.sas";
 %include "./macros/randomization_engine.sas";
 
@@ -22,10 +54,11 @@
 %let subject_naming= 参与者;
 %let rand_doc_ver  = V2.0;
 
-/* 可选：指定项目根目录。空值时默认 WORK 路径 */
-%let project_root = ;
+/* 默认沿用原main.sas逻辑：输出到程序所在目录的上一层目录 */
+%let project_root = &_root.;
 
 /* 初始化输出路径 */
+/* This creates blind_code_test/<run_date>/cohort_info under project_root. */
 %rt_init_paths(
     root_path=&project_root,
     output_folder=blind_code_test,
@@ -34,6 +67,11 @@
 
 /* =============================== EXAMPLE CALL =============================== */
 /* 该示例采用行业标准多因子分层：3*4=12组合分层，2组(4:2)，N=72 */
+/* Beginner reading guide for the call below:                                */
+/*   N=72                  total planned randomization records               */
+/*   block_group_n=4 2      each block has 4 experimental + 2 control records */
+/*   strata_hierarchy=...   factor levels expand to 12 combination strata     */
+/*   strata_block_n=...     one block is assigned to each of the 12 strata     */
 %randomization_table_industrial(
     type=subject,
     cohort_No=1,
