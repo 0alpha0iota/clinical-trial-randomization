@@ -1,0 +1,9 @@
+# Generated randomization outputs and audit datasets
+cohort_info/
+tests/cohort_info/
+*.sas7bdat
+*.rtf
+
+# SAS batch execution artifacts
+*.log
+*.lst
