@@ -1,121 +1,171 @@
-/************************************************************************/
-/* 内容：工业级临床试验随机表生成主程序                                    */
-/* 作者：Industrial Generator (Codex)                                     */
-/* 创建时间：2026/04/23                                                   */
-/* 更新日志：                                                              */
-/*  - V2.0: 模块化、审计追踪、生产化参数校验、可复现随机种子               */
-/* 使用说明：                                                              */
-/*  1) 修改“GLOBAL SETTINGS”区参数                                         */
-/*  2) 运行本程序                                                           */
-/*  3) 结果输出在 blind_code_test/<run_date>/cohort_info                  */
-/************************************************************************/
+﻿/**************************************************************************
+* Program: industrial_main.sas
+*
+* Purpose
+* -------
+* Production driver for clinical-trial randomization table generation.
+* This file contains configuration and macro calls only. Reusable logic is
+* implemented in the macros directory.
+*
+* Safe execution
+* --------------
+* RUN_* switches default to NO. Review the configuration, select the
+* required operations, and then change the relevant switches to YES.
+**************************************************************************/
 
 
-/* %MACRO locating previous-level folder of directory where program is stored */
-/* save the path as &_root. */
-/* Beginner note: this block is copied from the original main.sas. It lets the */
-/* program find a default project root without hard-coding a local computer path. */
-%MACRO setpaths;
-%global _root  ;
-%if %symexist(_SASPROGRAMFILE) %then %do;
-    %let current_path = %sysfunc(reverse(%substr(
-        %sysfunc(reverse(&_SASPROGRAMFILE)), 
-        %eval(%index(%sysfunc(reverse(&_SASPROGRAMFILE)), /)) +1
-    )));
-    %let setup_= %upcase(&current_path.);
-    %let curpath =%qsysfunc(ksubstr(%quote(&setup_),1,%eval(%sysfunc(klength(%quote(&setup_))) -  %sysfunc(klength(%sysfunc(kscan(%quote(&setup_),-1,'\'))))  -2 ) ))  ;
+/*=========================================================================
+* 1. RESOLVE PROJECT ROOT
+*
+* A caller may define ROOT before running this program. If ROOT is empty,
+* the directory containing industrial_main.sas is used.
+*=========================================================================*/
+%global root;
 
-    /* remove possible quotes */
-    %let curpath = %sysfunc(compress(&curpath., %str(%')));
-    %let _root = %ksubstr(%quote(&curpath.),1,%eval(%kindex(%quote(&curpath.),%kscan(%quote(&curpath.),-1,\))-2));
-%end;
+%macro rt_resolve_project_root;
+    %if not %sysevalf(%superq(root)=, boolean) %then %return;
 
-%else %do;
+    data _null_;
+        length _program_path _resolved_root $2048;
 
-    %let _fullpath=%sysfunc(getoption(sysin));
-    %if "&_fullpath." eq "" %then %let _fullpath=%sysget(sas_execfilepath);
-    %let _root=%ksubstr(%quote(&_fullpath.),1,%eval(%kindex(%quote(&_fullpath.),%kscan(%quote(&_fullpath.),-2,\))-2));
-%end;
-%MEND;
-%setpaths;
-%put &_root.; /* check path */
+        _program_path=symget('_SASPROGRAMFILE');
+        if missing(_program_path) then
+            _program_path=getoption('sysin');
+        if missing(_program_path) then
+            _program_path=sysget('SAS_EXECFILEPATH');
 
-/* ============================== INCLUDE MACROS ============================== */
-/* %include reads another SAS program into this program at run time. */
-/* Keep macro definitions in separate files so the main driver remains short. */
-%include "./macros/seed_utils.sas";
-%include "./macros/randomization_engine.sas";
+        _program_path=dequote(strip(_program_path));
 
-/* ============================= GLOBAL SETTINGS ============================== */
-%let protocol_name = XXXXXXXXXXXXXXXX临床研究;
-%let protocol_SN   = XXXXXXXX;
-%let sponsor       = XXXXXXXX有限公司;
-%let producer      = 上海益临思医药开发有限公司;
-%let subject_naming= 参与者;
-%let rand_doc_ver  = V2.0;
+        if not missing(_program_path) then
+            _resolved_root=prxchange(
+                's#[/\\][^/\\]+$##', 1, _program_path
+            );
+        else
+            _resolved_root=pathname('work');
 
-/* 默认沿用原main.sas逻辑：输出到程序所在目录的上一层目录 */
-%let project_root = &_root.;
+        call symputx('root', _resolved_root, 'g');
+    run;
+%mend rt_resolve_project_root;
 
-/* 初始化输出路径 */
-/* This creates blind_code_test/<run_date>/cohort_info under project_root. */
-%rt_init_paths(
-    root_path=&project_root,
-    output_folder=blind_code_test,
-    run_date=
+%rt_resolve_project_root;
+%put NOTE: [RT_MAIN] Project root: &root.;
+
+
+/*=========================================================================
+* 2. INCLUDE FRAMEWORK MODULES
+*=========================================================================*/
+%include "&root./macros/assertions.sas";
+%include "&root./macros/seed_utils.sas";
+%include "&root./macros/randomization_engine.sas";
+%include "&root./macros/stratification.sas";
+%include "&root./macros/reporting.sas";
+
+
+/*=========================================================================
+* 3. STUDY METADATA
+*
+* These values are available to customized titles and downstream reporting.
+* The cohort engine itself does not depend on protocol-specific text.
+*=========================================================================*/
+%let protocol_name =XXXXXXXXXXXXXXXX;
+%let protocol_number =XXXX-XX-XXX;
+%let sponsor =XXXX有限公司;
+%let producer =上海益临思医药开发有限公司;
+%let document_version =V1.0;
+
+
+/*=========================================================================
+* 4. EXECUTION SWITCHES
+*=========================================================================*/
+%let RUN_STRATIFICATION=NO;
+%let RUN_COHORT        =YES;
+%let RUN_REPORT        =YES;
+
+
+/*=========================================================================
+* 5. OPTIONAL STRATIFICATION CODEBOOK
+*
+* The last factor changes fastest in the generated Cartesian product.
+* Stratum sample sizes are intentionally supplied by the user elsewhere;
+* this macro does not infer or recommend stratum weights.
+*=========================================================================*/
+%let stratification_factors=%str(
+    Age: >=60, <60|
+    Gender: F, M|
+    Disease Type: A, B, C
 );
 
-/* =============================== EXAMPLE CALL =============================== */
-/* 该示例采用行业标准多因子分层：3*4=12组合分层，2组(4:2)，N=72 */
-/* Beginner reading guide for the call below:                                */
-/*   N=72                  total planned randomization records               */
-/*   block_group_n=4 2      each block has 4 experimental + 2 control records */
-/*   strata_hierarchy=...   factor levels expand to 12 combination strata     */
-/*   strata_block_n=...     one block is assigned to each of the 12 strata     */
-%randomization_table_industrial(
-    type=subject,
-    cohort_No=1,
-    cohort_name=%str( ),
-    randomization_method=STRATIFIED,
-    N=72,
-    block_group_n=4 2,
-    group_name=%str(试验组|对照组),
-    strata_hierarchy=%str(Age=18-40,41-60,>60|Region=North,South,East,West),
-    strata_block_n=1 1 1 1 1 1 1 1 1 1 1 1,
-    prefix=R,
-    ID_add=0,
-    sub_id_offset=100,
-    rand_width=4,
-    seed_mode_plan=AUTO,
-    set_seed_plan=,
-    seed_mode_strata=AUTO,
-    set_seed_strata=,
-    save_audit=Y
-);
+/*=========================================================================
+* 6. SINGLE-COHORT RANDOMIZATION
+*
+* SIMPLE syntax example:
+*   method=SIMPLE
+*   allocation=1:3
+*
+* BLOCK syntax example:
+*   method=BLOCK
+*   allocation=4 2
+*
+* For a stratified design, call this engine once per stratum after the
+* user has supplied a valid sample size for each stratum.
+*=========================================================================*/
+%let table_type      =SUBJECT;
+%let cohort_no       =1;
+%let method          =BLOCK;
+%let sample_size     =60;
+%let treatment_labels=%str(Treatment A|Treatment B);
+%let allocation      =4 2;
+%let prefix          =R;
+%let id_digits       =4;
+%let id_shift        =100;
+%let seed_mode       =AUTO;
+%let fixed_seed      =;
+%let overwrite       =YES;
 
-/* ============================ OPTIONAL EXTRA CALLS =========================== */
-/*
-多层分层示例：
-strata_hierarchy = %str(Region=CN,US|Sex=M,F|Stage=II,III)
-表示自动生成 2*2*2 = 8 个分层；
-strata_block_n 需要提供8个整数，对应各组合分层的区组数。
-*/
-/*
-%randomization_table_industrial(
-    type=drug,
-    cohort_No=1,
-    randomization_method=STRATIFIED,
-    N=96,
-    block_group_n=1 1,
-    group_name=%str(A|B),
-    strata_hierarchy=%str(Region=CN,US|Sex=M,F|Stage=II,III),
-    strata_block_n=2 2 2 2 1 1 3 3,
-    prefix=D,
-    rand_width=5,
-    seed_mode_plan=FIXED,
-    set_seed_plan=20260423,
-    seed_mode_strata=FIXED,
-    set_seed_strata=20260424,
-    save_audit=Y
-);
-*/
+/*=========================================================================
+* 7. OPTIONAL RTF LISTING
+*
+* Subject listings sort by Rand_ID.
+* Drug listings sort by Treatment_Code and then Rand_ID.
+* BLOCK listings display the within-block position column.
+*=========================================================================*/
+%macro rt_execute_configured_steps;
+    %if %upcase(&RUN_STRATIFICATION)=YES %then %do;
+        %generate_stratification_code(
+            root_path=&root,
+            stratification_factors=&stratification_factors,
+            overwrite=NO
+        );
+    %end;
+
+    %if %upcase(&RUN_COHORT)=YES %then %do;
+        %generate_cohort_randomization(
+            root_path=&root,
+            table_type=&table_type,
+            cohort_no=&cohort_no,
+            method=&method,
+            sample_size=&sample_size,
+            treatment_labels=&treatment_labels,
+            allocation=&allocation,
+            prefix=&prefix,
+            id_digits=&id_digits,
+            id_shift=&id_shift,
+            seed_mode=&seed_mode,
+            fixed_seed=&fixed_seed,
+            overwrite=&overwrite
+        );
+    %end;
+
+    %if %upcase(&RUN_REPORT)=YES %then %do;
+        %generate_randomization_rtf(
+            root_path=&root,
+            table_type=&table_type,
+            cohort_no=&cohort_no,
+            title1=&protocol_name,
+            title2=%str(Cohort &cohort_no Randomization Table),
+            overwrite=&overwrite
+        );
+    %end;
+%mend rt_execute_configured_steps;
+
+%rt_execute_configured_steps;

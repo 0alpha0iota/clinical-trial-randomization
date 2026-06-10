@@ -1,509 +1,462 @@
-/************************************************************************/
-/* 内容：工业化临床试验随机表生成引擎                                     */
-/* 作者：Industrial Generator (Codex)                                     */
-/* 创建时间：2026/04/23                                                   */
-/* 目标：                                                                  */
-/*  - 支持 SIMPLE / BLOCKING / STRATIFIED                                  */
-/*  - STRATIFIED支持行业标准多因子组合分层(自动笛卡尔组合)                  */
-/*  - 维持主程序 output 结构: Rand_ID, Rand_sub_ID, Group, Group_Num 等     */
-/*  - 增加参数校验、审计追踪、可复现种子管理，并保留PROC PLAN核心生成逻辑   */
-/************************************************************************/
+/**************************************************************************
+* File: randomization_engine.sas
+*
+* Public macro
+* ------------
+* %generate_cohort_randomization
+*
+* This macro creates exactly one cohort randomization dataset.  It does
+* not parse stratification factors and it does not allocate subjects among
+* strata.  A stratified design calls this engine once for each stratum.
+*
+* PROC PLAN is the only random plan generator used by this engine.
+**************************************************************************/
 
-/* ------------------------------------------------------------------------ */
-/* Macro: rt_init_paths                                                      */
-/* Purpose for beginners:                                                    */
-/*   Create the folder structure where output SAS datasets will be written.  */
-/*   The macro creates two global macro variables used by later code:        */
-/*     RT_PATH        = run-level folder, e.g. .../blind_code_test/2026-05-29 */
-/*     RT_PATH_COHORT = dataset folder under RT_PATH/cohort_info             */
-/*                                                                            */
-/* SAS note:                                                                 */
-/*   options dlcreatedir lets LIBNAME create a physical folder if missing.   */
-/* ------------------------------------------------------------------------ */
-%MACRO rt_init_paths(root_path=, output_folder=blind_code_test, run_date=);
-    /* %global makes these path macro variables available outside this macro. */
-    %global RT_ROOT RT_RUN_DATE RT_PATH RT_PATH_COHORT;
 
-    /* If root_path is blank, default to SAS WORK; otherwise use the caller-supplied root. */
-    %if %sysevalf(%superq(root_path)=,boolean) %then %let RT_ROOT=%sysfunc(pathname(work));
-    %else %let RT_ROOT=&root_path;
-
-    /* If run_date is blank, use today in ISO format (YYYY-MM-DD). */
-    %if %sysevalf(%superq(run_date)=,boolean) %then %let RT_RUN_DATE=%sysfunc(date(),E8601DA.);
-    %else %let RT_RUN_DATE=&run_date;
-
-    %let RT_PATH=&RT_ROOT./&output_folder./&RT_RUN_DATE;
-    %let RT_PATH_COHORT=&RT_PATH./cohort_info;
-
-    options dlcreatedir;
-    libname _rtmk1 "&RT_PATH";
-    libname _rtmk1 clear;
-    libname _rtmk2 "&RT_PATH_COHORT";
-    libname _rtmk2 clear;
-    options nodlcreatedir;
-
-    %put NOTE: [Path] RT_PATH=&RT_PATH;
-    %put NOTE: [Path] RT_PATH_COHORT=&RT_PATH_COHORT;
-%MEND rt_init_paths;
-
-/* ------------------------------------------------------------------------ */
-/* Macro: rt_validate_inputs                                                 */
-/* Purpose for beginners:                                                    */
-/*   Check all user-supplied parameters before randomization starts.         */
-/*   This is safer than discovering errors after a randomization list has    */
-/*   already been generated.                                                 */
-/*                                                                            */
-/* Key checks:                                                               */
-/*   - N must be positive.                                                   */
-/*   - method must be SIMPLE, BLOCKING, or STRATIFIED.                       */
-/*   - number of group labels must match number of allocation-ratio values.  */
-/*   - for STRATIFIED, number of combination strata must match strata_block_n.*/
-/* ------------------------------------------------------------------------ */
-%MACRO rt_validate_inputs(
-    randomization_method=,
-    N=,
-    block_group_n=,
-    group_name=,
-    strata_block_n=,
-    strata_hierarchy=
+%macro generate_cohort_randomization(
+    root_path=,
+    table_type=SUBJECT,
+    cohort_no=,
+    method=,
+    sample_size=,
+    treatment_labels=,
+    allocation=,
+    prefix=,
+    id_digits=5,
+    id_shift=0,
+    seed_mode=AUTO,
+    fixed_seed=,
+    overwrite=NO
 );
-    /* Local macro variables exist only inside this macro. */
-    %local _meth _gcount _bcount _scount _sbcount;
-    %let _meth=%upcase(&randomization_method);
+    %local
+        _rt_method
+        _rt_seed_mode
+        _rt_output_exists
+        _rt_seed_exists
+        _rt_row_count
+        _rt_unique_id_count
+        _rt_missing_group_count
+        _rt_actual_group_rows
+        _rt_unique_position_count
+        _rt_audit_out
+    ;
 
-    %rt_assert(cond=%sysevalf(&N > 0), msg=N 必须为正整数);
-    %rt_assert(cond=%sysfunc(indexw(SIMPLE BLOCKING STRATIFIED, &_meth)) > 0,
-               msg=randomization_method 仅支持 SIMPLE/BLOCKING/STRATIFIED);
+    %let _rt_method=%upcase(%superq(method));
+    %let _rt_seed_mode=%upcase(%superq(seed_mode));
+    %let _rt_actual_group_rows=0;
+    %let _rt_audit_out=;
+    %if &_rt_seed_mode=AUTO %then %let _rt_audit_out=work._rt_seed_audit;
 
-    /* group_name uses | as delimiter, e.g. A|B|C. Count labels and ratio values. */
-    %let _gcount=%sysfunc(countw(%superq(group_name),|));
-    %let _bcount=%sysfunc(countw(%superq(block_group_n),%str( )));
-    %rt_assert(cond=%sysevalf(&_gcount > 1), msg=group_name 至少提供2组);
-    %rt_assert(cond=%sysevalf(&_gcount = &_bcount), msg=group_name 与 block_group_n 长度不一致);
+    /* Assign or create <root_path>/cohort_info before validating members. */
+    %rt_init_paths(root_path=&root_path);
+    %if &RT_PATH_READY ne 1 %then %do;
+        %put ERROR: [RT_ENGINE] Path initialization failed. No cohort was generated.;
+        %return;
+    %end;
 
-    /* Verify every allocation-ratio number is positive. */
-    data _null_;
-        array _bn{&_bcount} (&block_group_n);
-        do i=1 to dim(_bn);
-            if _bn{i} <= 0 then call symputx('_RT_BAD_RATIO', 1, 'g');
+    /*
+     * All user-input checks, output collision checks, and derived design
+     * calculations occur before seed generation and before PROC PLAN.
+     */
+    %rt_validate_randomization_inputs(
+        table_type=&table_type,
+        cohort_no=&cohort_no,
+        method=&method,
+        sample_size=&sample_size,
+        treatment_labels=&treatment_labels,
+        allocation=&allocation,
+        prefix=&prefix,
+        id_digits=&id_digits,
+        id_shift=&id_shift,
+        seed_mode=&seed_mode,
+        fixed_seed=&fixed_seed,
+        overwrite=&overwrite,
+        output_lib=rtcohrt
+    );
+
+    %if &RT_INPUT_VALID ne 1 %then %do;
+        %put ERROR: [RT_ENGINE] Cohort &cohort_no was rejected before PROC PLAN.;
+        %return;
+    %end;
+
+    /*
+     * Remove only internal staging members left by an interrupted earlier
+     * run.  Standardized production outputs are not touched until the new
+     * plan has passed all integrity checks.
+     */
+    proc datasets lib=work nolist nowarn;
+        delete _rt_seed_audit _rt_raw_plan _rt_randomization_stage
+               _rt_expected_groups _rt_actual_groups _rt_group_check
+               _rt_actual_block_groups _rt_unique_positions;
+    quit;
+
+    proc datasets lib=rtcohrt nolist nowarn;
+        delete _rt_rand_stage _rt_seed_stage;
+    quit;
+
+    /*
+     * AUTO audit data are initially written to WORK.  FIXED mode returns
+     * the designated seed but creates no audit dataset.
+     */
+    %generate_seed(
+        table_type=&table_type,
+        cohort_no=&cohort_no,
+        seed_mode=&seed_mode,
+        fixed_seed=&fixed_seed,
+        audit_out=&_rt_audit_out,
+        out_seed_var=RT_PLAN_SEED,
+        out_relative_time_var=RT_PLAN_RELATIVE_TIME,
+        out_date_var=RT_PLAN_PRODUCTION_DATE,
+        out_datetime_var=RT_PLAN_PRODUCTION_DATETIME,
+        out_valid_var=RT_PLAN_SEED_VALID
+    );
+
+    %if &RT_PLAN_SEED_VALID ne 1 %then %do;
+        %put ERROR: [RT_ENGINE] Seed generation failed. No cohort was generated.;
+        %return;
+    %end;
+
+    /*
+     * SIMPLE randomization:
+     * The full cohort is one allocation set. PROC PLAN returns a random
+     * permutation from 1 through sample_size. That position is mapped to
+     * exact treatment totals derived from the simplified ratio.
+     */
+    %if &_rt_method=SIMPLE %then %do;
+        proc plan seed=&RT_PLAN_SEED;
+            factors Allocation_Position=&sample_size random / noprint;
+            output out=work._rt_raw_plan;
+        run;
+        quit;
+    %end;
+
+    /*
+     * BLOCK randomization:
+     * Block_No remains ordered while Position_In_Block is randomized by
+     * PROC PLAN. Treatment assignment is a deterministic cumulative range:
+     * allocation=4 2 maps positions 1-4 to group 1 and 5-6 to group 2.
+     */
+    %else %if &_rt_method=BLOCK %then %do;
+        proc plan seed=&RT_PLAN_SEED;
+            factors
+                Block_No=&RT_NUMBER_OF_BLOCKS ordered
+                Position_In_Block=&RT_BLOCK_SIZE random
+                / noprint;
+            output out=work._rt_raw_plan;
+        run;
+        quit;
+    %end;
+
+    %if not %sysfunc(exist(work._rt_raw_plan)) %then %do;
+        %put ERROR: [RT_ENGINE] PROC PLAN did not create its expected output dataset.;
+        %return;
+    %end;
+
+    /*
+     * Map each randomized PROC PLAN position to one treatment group.
+     * Rand_Num always starts at id_shift+1 for every independent cohort.
+     */
+    data work._rt_randomization_stage;
+        set work._rt_raw_plan;
+
+        length
+            Table_Type $8
+            Randomization_Method $6
+            Allocation_Spec $500
+            Treatment_Group $200
+            Rand_ID $64
+            _allocation_text $32767
+            _allocation_delimiter $1
+            _prefix $200
+        ;
+
+        Table_Type=upcase("&table_type");
+        Cohort_No=&cohort_no;
+        Randomization_Method="&_rt_method";
+        Allocation_Spec=symget('allocation');
+        Randomization_Sequence=_n_;
+        Rand_Num=&id_shift+Randomization_Sequence;
+
+        _prefix=symget('prefix');
+        Rand_ID=cats(_prefix, put(Rand_Num, z&id_digits..));
+
+        if Randomization_Method='SIMPLE' then do;
+            _allocation_text=compress(symget('allocation'), ' ');
+            _allocation_delimiter=':';
+            _allocation_position=Allocation_Position;
+            _allocation_multiplier=&sample_size/&RT_ALLOCATION_SUM;
+            Block_No=.;
+            Position_In_Block=.;
         end;
-    run;
-    %if %symexist(_RT_BAD_RATIO) %then %do;
-        %put ERROR: block_group_n 需为正整数数组;
-        %abort cancel;
-    %end;
+        else do;
+            _allocation_text=strip(compbl(symget('allocation')));
+            _allocation_delimiter=' ';
+            _allocation_position=Position_In_Block;
+            _allocation_multiplier=1;
+            Allocation_Position=.;
+        end;
 
-    %if &_meth = STRATIFIED %then %do;
-        %rt_assert(cond=%sysevalf(%superq(strata_hierarchy)^=,boolean),
-                   msg=STRATIFIED 模式下必须提供 strata_hierarchy);
-        /* Count final strata as product of factor level counts.
-           Example: Age has 3 levels and Region has 4 levels => 3*4=12 strata. */
-        data _null_;
-            length _h $2000 _piece $500 _levels $500;
-            _h = symget('strata_hierarchy');
-            _fcount = countw(_h, '|');
-            _product = 1;
-            do _k = 1 to _fcount;
-                /* Each _piece looks like Factor=Level1,Level2,... */
-                _piece = scan(_h, _k, '|');
-                _levels = scan(_piece, 2, '=');
-                _lvn = countw(_levels, ',');
-                if _lvn <= 0 then _lvn = 0;
-                _product = _product * _lvn;
-            end;
-            call symputx('_scount', _product, 'l');
-        run;
-        %let _sbcount=%sysfunc(countw(%superq(strata_block_n),%str( )));
-        %rt_assert(cond=%sysevalf(&_scount > 0), msg=STRATIFIED 需提供有效 strata_hierarchy);
-        %rt_assert(cond=%sysevalf(&_scount = &_sbcount), msg=分层总数 与 strata_block_n 长度不一致);
-    %end;
-%MEND rt_validate_inputs;
+        Treatment_Code=.;
+        _cumulative_count=0;
 
-/* ------------------------------------------------------------------------ */
-/* Macro: rt_build_strata_from_hierarchy                                     */
-/* Purpose for beginners:                                                    */
-/*   Convert stratification factors into all possible combination strata.    */
-/*                                                                            */
-/* Input example:                                                            */
-/*   strata_hierarchy=%str(Region=US,EU|Sex=M,F|Risk=Low,High)              */
-/*                                                                            */
-/* Output dataset _strata_meta:                                              */
-/*   Stratum_Num  Stratum_Name                                               */
-/*   1            Region=US|Sex=M|Risk=Low                                  */
-/*   2            Region=US|Sex=M|Risk=High                                 */
-/*   ...                                                                        */
-/*                                                                            */
-/* SAS concept: PROC SQL below performs a cartesian join to append each new  */
-/* factor's levels onto all combinations already created.                    */
-/* ------------------------------------------------------------------------ */
-%MACRO rt_build_strata_from_hierarchy(
-    strata_hierarchy=,
-    out_ds=_strata_meta
-);
-    %local _fcount _i _factor _levels;
-    %let _fcount=%sysfunc(countw(%superq(strata_hierarchy),|));
-    %rt_assert(cond=%sysevalf(&_fcount > 0), msg=strata_hierarchy 不能为空);
+        do _arm=1 to &RT_ARM_COUNT;
+            _arm_count=input(
+                scan(
+                    _allocation_text,
+                    _arm,
+                    _allocation_delimiter,
+                    ifc(Randomization_Method='SIMPLE', 'm', '')
+                ),
+                best32.
+            );
+            _cumulative_count+(_arm_count*_allocation_multiplier);
 
-    /* Start with one empty row; each factor expands this table by its number of levels. */
-    data _rt_combo;
-        length Stratum_Name $1000;
-        Stratum_Name="";
-        output;
+            if missing(Treatment_Code) and
+               _allocation_position <= _cumulative_count then
+                Treatment_Code=_arm;
+        end;
+
+        Treatment_Group=strip(
+            scan(symget('treatment_labels'), Treatment_Code, '|', 'm')
+        );
+
+        label
+            Table_Type='Randomization table type'
+            Cohort_No='Cohort number'
+            Randomization_Method='Randomization method'
+            Randomization_Sequence='Sequence in generated cohort table'
+            Rand_Num='Numeric randomization number'
+            Rand_ID='Randomization ID'
+            Treatment_Code='Treatment group number'
+            Treatment_Group='Treatment group'
+            Allocation_Spec='Requested allocation'
+            Block_No='Block number'
+            Position_In_Block='Position within block'
+            Allocation_Position='Random allocation position'
+        ;
+
+        drop
+            _allocation_text _allocation_delimiter _prefix
+            _allocation_position _allocation_multiplier
+            _cumulative_count _arm _arm_count
+        ;
     run;
 
-    /* Loop over factors separated by |. */
-    %do _i=1 %to &_fcount;
-        %let _factor=%qscan(%superq(strata_hierarchy), &_i, |);
-        %let _levels=%qscan(%superq(_factor), 2, =);
-        %let _factor=%qscan(%superq(_factor), 1, =);
-        %rt_assert(cond=%sysevalf(%superq(_factor)^=,boolean), msg=分层因子名称不能为空);
-        %rt_assert(cond=%sysevalf(%superq(_levels)^=,boolean), msg=分层因子水平不能为空);
+    /*---------------------------------------------------------------
+     * Post-generation integrity checks
+     *
+     * These checks detect PROC PLAN failures, accidental duplicate IDs,
+     * unmapped treatment records, incorrect overall group counts, and
+     * incorrect treatment counts within an individual block.
+     *---------------------------------------------------------------*/
+    %let RT_POSTCHECK_VALID=1;
 
-        /* Convert the comma-separated levels for the current factor into rows. */
-        data _rt_levels;
-            length _factor $100 _level $200;
-            _factor="&_factor";
-            do _idx=1 to countw("&_levels", ',');
-                _level=strip(scan("&_levels", _idx, ','));
-                if not missing(_level) then output;
-            end;
-            keep _factor _level;
+    proc sql noprint;
+        select
+            count(*),
+            count(distinct Rand_ID),
+            sum(missing(Treatment_Group))
+        into
+            :_rt_row_count trimmed,
+            :_rt_unique_id_count trimmed,
+            :_rt_missing_group_count trimmed
+        from work._rt_randomization_stage;
+    quit;
+
+    %if &_rt_row_count ne &sample_size %then %do;
+        %put ERROR: [RT_INTEGRITY] Generated row count &_rt_row_count does not equal sample_size &sample_size..;
+        %let RT_POSTCHECK_VALID=0;
+    %end;
+
+    %if &_rt_unique_id_count ne &sample_size %then %do;
+        %put ERROR: [RT_INTEGRITY] Rand_ID values are not unique within the cohort.;
+        %let RT_POSTCHECK_VALID=0;
+    %end;
+
+    %if %sysevalf(&_rt_missing_group_count > 0) %then %do;
+        %put ERROR: [RT_INTEGRITY] At least one generated record has no treatment group.;
+        %let RT_POSTCHECK_VALID=0;
+    %end;
+
+    /* Expected and actual total treatment counts must match exactly. */
+    data work._rt_expected_groups;
+        length Expected_Count 8;
+        do Treatment_Code=1 to &RT_ARM_COUNT;
+            _allocation_text=ifc(
+                "&_rt_method"='SIMPLE',
+                compress(symget('allocation'), ' '),
+                strip(compbl(symget('allocation')))
+            );
+            _delimiter=ifc("&_rt_method"='SIMPLE', ':', ' ');
+            _allocation_value=input(
+                scan(
+                    _allocation_text,
+                    Treatment_Code,
+                    _delimiter,
+                    ifc("&_rt_method"='SIMPLE', 'm', '')
+                ),
+                best32.
+            );
+
+            if "&_rt_method"='SIMPLE' then
+                Expected_Count=_allocation_value*
+                               (&sample_size/&RT_ALLOCATION_SUM);
+            else
+                Expected_Count=_allocation_value*&RT_NUMBER_OF_BLOCKS;
+            output;
+        end;
+        keep Treatment_Code Expected_Count;
+    run;
+
+    proc sql;
+        create table work._rt_actual_groups as
+        select Treatment_Code, count(*) as Actual_Count
+        from work._rt_randomization_stage
+        group by Treatment_Code;
+    quit;
+
+    proc sort data=work._rt_expected_groups;
+        by Treatment_Code;
+    run;
+    proc sort data=work._rt_actual_groups;
+        by Treatment_Code;
+    run;
+
+    data work._rt_group_check;
+        merge work._rt_expected_groups(in=_expected)
+              work._rt_actual_groups(in=_actual);
+        by Treatment_Code;
+        if not _expected or not _actual or Expected_Count ne Actual_Count then
+            call symputx('RT_POSTCHECK_VALID', 0, 'l');
+    run;
+
+    %if &RT_POSTCHECK_VALID ne 1 %then
+        %put ERROR: [RT_INTEGRITY] Overall treatment counts do not match the requested allocation.;
+
+    /*
+     * Verify random positions are a complete permutation. For BLOCK, also
+     * verify every treatment count inside every block.
+     */
+    %if &_rt_method=SIMPLE %then %do;
+        proc sort
+            data=work._rt_randomization_stage(keep=Allocation_Position)
+            out=work._rt_unique_positions
+            nodupkey;
+            by Allocation_Position;
+        run;
+    %end;
+    %else %do;
+        proc sort
+            data=work._rt_randomization_stage(
+                keep=Block_No Position_In_Block
+            )
+            out=work._rt_unique_positions
+            nodupkey;
+            by Block_No Position_In_Block;
         run;
 
-        /* Cartesian join: existing combinations X current factor levels. */
-        proc sql noprint;
-            create table _rt_combo_new as
+        proc sql;
+            create table work._rt_actual_block_groups as
             select
-                case
-                    when a.Stratum_Name = "" then cats(b._factor, "=", b._level)
-                    else cats(a.Stratum_Name, "|", b._factor, "=", b._level)
-                end as Stratum_Name length=1000
-            from _rt_combo as a, _rt_levels as b;
+                Block_No,
+                Treatment_Code,
+                count(*) as Actual_Count
+            from work._rt_randomization_stage
+            group by Block_No, Treatment_Code;
         quit;
 
-        data _rt_combo;
-            set _rt_combo_new;
-        run;
-    %end;
-
-    data &out_ds;
-        set _rt_combo;
-        Stratum_Num=_n_;
-    run;
-
-    /* Clean temporary WORK datasets so reruns start from a clean workspace. */
-    proc datasets lib=work nolist nowarn;
-        delete _rt_combo _rt_combo_new _rt_levels;
-    quit;
-%MEND rt_build_strata_from_hierarchy;
-
-/* ------------------------------------------------------------------------ */
-/* Macro: randomization_table_industrial                                     */
-/* Purpose for beginners:                                                    */
-/*   Main reusable macro that creates a randomization table.                 */
-/*                                                                            */
-/* High-level flow:                                                          */
-/*   1. Validate user inputs.                                                */
-/*   2. Calculate block size and number of blocks.                           */
-/*   3. Generate reproducible seeds.                                         */
-/*   4. Use PROC PLAN to create randomized block/position records.           */
-/*   5. Map PROC PLAN positions to treatment groups by allocation ratio.     */
-/*   6. If STRATIFIED, assign randomized blocks to combination strata.       */
-/*   7. Format randomization IDs and write output/audit datasets.            */
-/* ------------------------------------------------------------------------ */
-%MACRO randomization_table_industrial(
-    type=subject,
-    cohort_No=1,
-    cohort_name=%str( ),
-    randomization_method=STRATIFIED,
-    N=,
-    block_group_n=,
-    group_name=,
-    strata_block_n=,
-    strata_hierarchy=%str( ),
-    prefix=NA,
-    ID_add=0,
-    sub_id_offset=100,
-    rand_width=4,
-    seed_mode_plan=AUTO,
-    set_seed_plan=,
-    seed_mode_strata=AUTO,
-    set_seed_strata=,
-    save_audit=Y
-);
-    %local _meth _gcount _scount _blocksize _nblocks _total_blocks_req _i;
-    %let _meth=%upcase(&randomization_method);
-
-    %rt_validate_inputs(
-        randomization_method=&_meth,
-        N=&N,
-        block_group_n=&block_group_n,
-        group_name=&group_name,
-        strata_block_n=&strata_block_n,
-        strata_hierarchy=&strata_hierarchy
-    );
-
-    /* Block size is the sum of allocation counts inside one block.
-       Example: block_group_n=4 2 => block size=6, ratio=2:1. */
-    data _null_;
-        array b_n{%sysfunc(countw(&block_group_n))} (&block_group_n);
-        _bsize = sum(of b_n[*]);
-        call symputx("_blocksize", _bsize);
-    run;
-
-    %if %sysfunc(mod(&N, &_blocksize)) = 0 %then %let _nblocks=%eval(&N / &_blocksize);
-    %else %do;
-        %put ERROR: N(&N) 不是区组大小(&_blocksize)整数倍。当前版本需满足该条件。;
-        %abort cancel;
-    %end;
-
-    /* In stratified randomization, strata_block_n gives how many blocks go to each stratum. */
-    %if &_meth = STRATIFIED %then %do;
         data _null_;
-            array s_n{%sysfunc(countw(&strata_block_n))} (&strata_block_n);
-            _s_total = sum(of s_n[*]);
-            call symputx("_total_blocks_req", _s_total);
+            set work._rt_actual_block_groups end=_last;
+            _allocation_text=strip(compbl(symget('allocation')));
+            _expected=input(
+                scan(_allocation_text, Treatment_Code, ' '),
+                best32.
+            );
+
+            if Actual_Count ne _expected then
+                call symputx('RT_POSTCHECK_VALID', 0, 'l');
+
+            if _last then call symputx(
+                '_rt_actual_group_rows', _n_, 'l'
+            );
         run;
-        %if &_nblocks ne &_total_blocks_req %then %do;
-            %put ERROR: strata_block_n总区组(&_total_blocks_req)与N推导区组(&_nblocks)不一致。;
-            %abort cancel;
+
+        %if &_rt_actual_group_rows ne %eval(&RT_NUMBER_OF_BLOCKS*&RT_ARM_COUNT) %then %do;
+            %put ERROR: [RT_INTEGRITY] One or more blocks is missing a treatment group.;
+            %let RT_POSTCHECK_VALID=0;
         %end;
     %end;
 
-    /* Generate/store the seed used by PROC PLAN for treatment allocation. */
-    %rt_set_seed(
-        seed_role=PLAN,
-        cohort_no=&cohort_No,
-        seed_mode=&seed_mode_plan,
-        fixed_seed=&set_seed_plan,
-        out_seed_var=Seed_&type._cohort&cohort_No._PLAN,
-        out_time_var=Datetime_&type._cohort&cohort_No._PLAN
-    );
-
-    %if &_meth = STRATIFIED %then %do;
-        /* Generate/store a separate seed used to randomize block-to-stratum assignment. */
-        %rt_set_seed(
-            seed_role=STRATA,
-            cohort_no=&cohort_No,
-            seed_mode=&seed_mode_strata,
-            fixed_seed=&set_seed_strata,
-            out_seed_var=Seed_&type._cohort&cohort_No._STRATA,
-            out_time_var=Datetime_&type._cohort&cohort_No._STRATA
-        );
-    %end;
-
-    /* group_name uses | as delimiter, e.g. A|B|C. Count labels and ratio values. */
-    %let _gcount=%sysfunc(countw(%superq(group_name),|));
-    %let _scount=0;
-
-    /* Step 1: 使用PROC PLAN生成随机化基础表(遵循临床试验常用做法)
-       PROC PLAN returns variables block and size. size is randomized within block,
-       and later we translate size into the actual treatment group. */
-    PROC PLAN seed=&&Seed_&type._cohort&cohort_No._PLAN;
-        %if &_meth = SIMPLE %then %do;
-            /* SIMPLE: 整体样本作为一个大区组，保持总体比例 */
-            factors block=1 ordered size=&N / noprint;
-        %end;
-        %else %do;
-            /* BLOCKING/STRATIFIED: 按区组大小生成随机排列 */
-            factors block=&_nblocks ordered size=&_blocksize / noprint;
-        %end;
-        /* Save PROC PLAN output to temporary dataset _raw_plan. */
-        output out=_raw_plan;
-    RUN; quit;
-
-    /* Step 2: 根据区组内序号(size)映射试验组别与组别编号
-       Beginner example: if block_group_n=4 2, then size 1-4 => group 1,
-       size 5-6 => group 2 within each block. */
-    data _mapped_plan;
-        set _raw_plan;
-        length Group $200;
-
-        /* Temporary arrays hold group labels and ratios without writing them as columns. */
-        array g_names{&_gcount} $200 _temporary_ (
-            %do _i=1 %to &_gcount;
-                "%qscan(%superq(group_name), &_i, |)" %if &_i < &_gcount %then ,;
-            %end;
-        );
-        array g_ratio{%sysfunc(countw(&block_group_n))} _temporary_ (&block_group_n);
-
-        /* _idx is the selected group number; _sum_ratio is the cumulative cutoff. */
-        _idx=1;
-        _sum_ratio=g_ratio[1];
-
-        %if &_meth = SIMPLE %then %do;
-            /* SIMPLE: 将比例放大到总样本量，用PROC PLAN随机size映射组别 */
-            _multiplier=&N / &_blocksize;
-            _sum_ratio=g_ratio[1] * _multiplier;
-            do while (size > _sum_ratio and _idx < &_gcount);
-                _idx + 1;
-                _sum_ratio + (g_ratio[_idx] * _multiplier);
-            end;
-            drop _multiplier;
-        %end;
-        %else %do;
-            do while (size > _sum_ratio and _idx < &_gcount);
-                _idx + 1;
-                _sum_ratio + g_ratio[_idx];
-            end;
-        %end;
-
-        /* Store human-readable treatment group label and numeric group code. */
-        Group=g_names[_idx];
-        Group_Num=_idx;
-        drop _idx _sum_ratio;
+    %let _rt_unique_position_count=0;
+    data _null_;
+        if 0 then set work._rt_unique_positions nobs=_nobs;
+        call symputx('_rt_unique_position_count', _nobs, 'l');
+        stop;
     run;
 
-    /* Step 3: 分层(如适用)
-       For STRATIFIED mode, first generate all factor-combination strata, then
-       randomly assign whole blocks to strata. This preserves treatment balance
-       within each stratum according to the block design. */
-    %if &_meth = STRATIFIED %then %do;
-        %rt_build_strata_from_hierarchy(
-            strata_hierarchy=&strata_hierarchy,
-            out_ds=_strata_meta
-        );
-
-        /* Expand each stratum into as many rows as the number of blocks assigned to it. */
-        data _strata_layout;
-            length Stratum_Name $1000;
-            _ord=0;
-            set _strata_meta;
-            _this_stratum_n=input(scan("&strata_block_n", Stratum_Num, ' '), best.);
-            do _j=1 to _this_stratum_n;
-                _ord+1;
-                output;
-            end;
-            keep _ord Stratum_Num Stratum_Name;
-        run;
-
-        /* 使用PROC PLAN对区组号再次随机排序，然后按顺序映射至组合分层 */
-        PROC PLAN seed=&&Seed_&type._cohort&cohort_No._STRATA;
-            factors block_id=&_nblocks random / noprint;
-            output out=_randomized_blocks;
-        RUN; quit;
-
-        data _randomized_blocks;
-            set _randomized_blocks;
-            _ord=_n_;
-        run;
-
-        proc sort data=_strata_layout; by _ord; run;
-        /* Merge randomized block order with strata layout: this creates block -> stratum mapping. */
-        data _block_map;
-            merge _randomized_blocks(in=a) _strata_layout(in=b);
-            by _ord;
-            if a and b;
-            drop _ord;
-        run;
-
-        proc sort data=_mapped_plan; by block; run;
-        proc sort data=_block_map; by block_id; run;
-
-        /* Attach stratum information back onto every subject/drug row in the plan. */
-        data _temp_final;
-            merge _mapped_plan(rename=(block=block_id)) _block_map;
-            by block_id;
-        run;
-
-        proc sort data=_temp_final;
-            by Stratum_Num block_id size;
-        run;
-
-        /* Create sequential IDs within each stratum. */
-        data _final_data;
-            set _temp_final;
-            by Stratum_Num;
-            retain _stratum_seq 0;
-            if first.Stratum_Num then _stratum_seq=1;
-            else _stratum_seq+1;
-            ID_Num=&ID_add + (Stratum_Num * 1000) + _stratum_seq;
-            block=block_id;
-            drop _stratum_seq block_id;
-        run;
-    %end;
-    %else %do;
-        /* Non-stratified randomization: all records belong to one artificial stratum named ALL. */
-        data _final_data;
-            set _mapped_plan;
-            Stratum_Num=1;
-            Stratum_Name='ALL';
-            ID_Num=&ID_add + _n_;
-        run;
+    %if &_rt_unique_position_count ne &sample_size %then %do;
+        %put ERROR: [RT_INTEGRITY] PROC PLAN positions are not unique and complete.;
+        %let RT_POSTCHECK_VALID=0;
     %end;
 
-    /* Step 4: 输出格式(保持原结构，增强可配置)
-       This dataset is the main randomization table used by downstream teams. */
-    data "&RT_PATH_COHORT/&type._cohort&cohort_No";
-        set _final_data;
-        length Rand_ID $20 Rand_sub_ID $20;
+    %if &RT_POSTCHECK_VALID ne 1 %then %do;
+        %put ERROR: [RT_ENGINE] Integrity checks failed. No permanent cohort output was written.;
+        proc datasets lib=work nolist nowarn;
+            delete _rt_seed_audit _rt_raw_plan _rt_randomization_stage
+                   _rt_expected_groups _rt_actual_groups _rt_group_check
+                   _rt_actual_block_groups _rt_unique_positions;
+        quit;
+        %return;
+    %end;
 
-        /* cats() concatenates prefix and zero-padded numeric ID, e.g. R0001. */
-        if "%upcase(&prefix)" ne "NA" then Rand_ID=cats("&prefix", put(ID_Num, z&rand_width..));
-        else Rand_ID=put(ID_Num, z&rand_width..);
-
-        if "%upcase(&prefix)" ne "NA" then Rand_sub_ID=cats("&prefix", put(ID_Num + &sub_id_offset, z&rand_width..));
-        else Rand_sub_ID=put(ID_Num + &sub_id_offset, z&rand_width..);
-
-        label Rand_ID     = "随机号"
-              Rand_sub_ID = "替补随机号"
-              Group       = "组别"
-              Group_Num   = "组别编号"
-              block       = "区组号"
-              size        = "区组内序号"
-              Stratum_Num = "分层编号"
-              Stratum_Name= "分层名称"
-              ID_Num      = "顺序编号";
+    /*
+     * Write physical staging members only after validation and integrity
+     * checks pass. Then standardize member names in one PROC DATASETS step.
+     */
+    data rtcohrt._rt_rand_stage;
+        set work._rt_randomization_stage;
     run;
 
-    /* Sort output so subject lists are by randomization ID and drug lists by group then ID. */
-    proc sort data="&RT_PATH_COHORT/&type._cohort&cohort_No";
-        %if %upcase(&type) = SUBJECT %then %do;
-            by ID_Num;
-        %end;
-        %else %if %upcase(&type) = DRUG %then %do;
-            by Group_Num ID_Num;
-        %end;
-        %else %do;
-            by ID_Num;
-        %end;
-    run;
-
-    /* Optional audit dataset: captures parameters, seeds, user, timestamp, and SAS version. */
-    %if %upcase(&save_audit)=Y %then %do;
-        data "&RT_PATH/randomization_audit_cohort&cohort_No";
-            length protocol_name $200 type $32 method $20 group_name $500 strata_hierarchy $1000;
-            protocol_name = symget('protocol_name');
-            type="&type";
-            cohort_no=&cohort_No;
-            method="&_meth";
-            N=&N;
-            block_group_n="&block_group_n";
-            group_name="%superq(group_name)";
-            strata_block_n="&strata_block_n";
-            strata_hierarchy="%superq(strata_hierarchy)";
-            seed_plan=&&Seed_&type._cohort&cohort_No._PLAN;
-            seed_plan_time="&&Datetime_&type._cohort&cohort_No._PLAN";
-            %if &_meth = STRATIFIED %then %do;
-                seed_strata=&&Seed_&type._cohort&cohort_No._STRATA;
-                seed_strata_time="&&Datetime_&type._cohort&cohort_No._STRATA";
-            %end;
-            else do;
-                seed_strata=.;
-                seed_strata_time='';
-            end;
-            executed_by = symget('SYSUSERID');
-            executed_at = put(datetime(), e8601dt19.);
-            sas_version = symget('SYSVLONG4');
-            output;
+    %if &_rt_seed_mode=AUTO %then %do;
+        data rtcohrt._rt_seed_stage;
+            set work._rt_seed_audit;
+            length Randomization_Dataset $32;
+            Randomization_Dataset="&RT_OUTPUT_DATASET";
         run;
     %end;
 
-    /* Clean temporary WORK datasets so reruns start from a clean workspace. */
-    proc datasets lib=work nolist nowarn;
-        delete _raw_plan _mapped_plan _strata_layout _randomized_blocks
-               _block_map _temp_final _final_data _strata_meta;
+    %let _rt_output_exists=%sysfunc(exist(rtcohrt._rt_rand_stage));
+    %if &_rt_seed_mode=AUTO %then
+        %let _rt_seed_exists=%sysfunc(exist(rtcohrt._rt_seed_stage));
+    %else
+        %let _rt_seed_exists=1;
+
+    %if &_rt_output_exists ne 1 or &_rt_seed_exists ne 1 %then %do;
+        %put ERROR: [RT_ENGINE] Unable to write staging datasets in &RT_COHORT_PATH..;
+        proc datasets lib=rtcohrt nolist nowarn;
+            delete _rt_rand_stage _rt_seed_stage;
+        quit;
+        %return;
+    %end;
+
+    proc datasets lib=rtcohrt nolist nowarn;
+        delete &RT_OUTPUT_DATASET &RT_SEED_DATASET;
+        change _rt_rand_stage=&RT_OUTPUT_DATASET;
+        %if &_rt_seed_mode=AUTO %then %do;
+            change _rt_seed_stage=&RT_SEED_DATASET;
+        %end;
     quit;
 
-    %put NOTE: [RT] &type 随机化表(&_meth) 已输出到 &RT_PATH_COHORT.;
-%MEND randomization_table_industrial;
+    /* Remove WORK intermediates after successful promotion. */
+    proc datasets lib=work nolist nowarn;
+        delete _rt_seed_audit _rt_raw_plan _rt_randomization_stage
+               _rt_expected_groups _rt_actual_groups _rt_group_check
+               _rt_actual_block_groups _rt_unique_positions;
+    quit;
+
+    %put NOTE: [RT_ENGINE] Created rtcohrt..&RT_OUTPUT_DATASET with &sample_size records.;
+    %if &_rt_seed_mode=AUTO %then
+        %put NOTE: [RT_ENGINE] Created rtcohrt..&RT_SEED_DATASET for AUTO seed audit.;
+    %else
+        %put NOTE: [RT_ENGINE] FIXED seed was logged and no seed audit dataset was created.;
+%mend generate_cohort_randomization;
