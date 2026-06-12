@@ -106,7 +106,7 @@
 
         %if &_rt_method=BLOCK %then %do;
             define Block_No / display width=10 'Block No.';
-            define Position_In_Block / display width=16 'åŒºç»„å†…æ’åºå·';
+            define Position_In_Block / display width=16 'Çø×éÎ»ÖÃ';
         %end;
     run;
 

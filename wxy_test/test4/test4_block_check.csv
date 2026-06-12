@@ -1,7 +1,0 @@
-Cohort_No,Cohort_Name,Block_No,Test_Group_N,Placebo_N,Block_Check
-1,Low Dose Cohort,1,4,1,PASS
-1,Low Dose Cohort,2,4,1,PASS
-2,Middle Dose Cohort,1,4,1,PASS
-2,Middle Dose Cohort,2,4,1,PASS
-3,High Dose Cohort,1,4,1,PASS
-3,High Dose Cohort,2,4,1,PASS
