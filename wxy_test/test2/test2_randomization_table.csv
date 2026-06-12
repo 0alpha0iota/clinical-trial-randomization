@@ -1,0 +1,25 @@
+Rand_ID,Block_No,Treatment_Code,Treatment_Group
+R001,1,2,Control Group
+R002,1,1,Test Group
+R003,1,1,Test Group
+R004,1,2,Control Group
+R005,2,2,Control Group
+R006,2,1,Test Group
+R007,2,2,Control Group
+R008,2,1,Test Group
+R009,3,2,Control Group
+R010,3,1,Test Group
+R011,3,2,Control Group
+R012,3,1,Test Group
+R013,4,2,Control Group
+R014,4,2,Control Group
+R015,4,1,Test Group
+R016,4,1,Test Group
+R017,5,1,Test Group
+R018,5,2,Control Group
+R019,5,2,Control Group
+R020,5,1,Test Group
+R021,6,1,Test Group
+R022,6,2,Control Group
+R023,6,2,Control Group
+R024,6,1,Test Group
