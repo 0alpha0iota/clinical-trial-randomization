@@ -68,7 +68,13 @@
      * The integer portion is used deliberately: each decimal seed is the
      * last six digits of elapsed system seconds.  A zero result is changed
      * to one because PROC PLAN requires a positive seed.
+     * Pause before AUTO generation so consecutive cohort calls do not use
+     * the same integer second.
      */
+    data _null_;
+        call sleep(300, 0.01);
+    run;
+
     data _null_;
         _produced_datetime=datetime();
         _relative_time=floor(_produced_datetime);
