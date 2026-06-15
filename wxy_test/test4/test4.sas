@@ -25,7 +25,7 @@ options mprint mlogic symbolgen validvarname=v7;
 %include "&repo_root./macros/assertions.sas";
 %include "&repo_root./macros/seed_utils.sas";
 %include "&repo_root./macros/randomization_engine.sas";
-%include "&repo_root./macros/reporting.sas";
+%include "&repo_root./macros/reporting_new.sas";
 
 %macro run_test4_cohort(cohort_no=, cohort_name=, id_shift=);
     %generate_cohort_randomization(
