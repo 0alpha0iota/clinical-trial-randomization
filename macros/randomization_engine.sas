@@ -460,3 +460,211 @@
     %else
         %put NOTE: [RT_ENGINE] FIXED seed was logged and no seed audit dataset was created.;
 %mend generate_cohort_randomization;
+
+
+/**************************************************************************
+* Public macro: generate_stratified_rand
+*
+* Minimal first pass for stratified randomization:
+* 1) create the stratum code table from factor levels
+* 2) run the existing cohort engine independently inside each stratum
+* 3) append all strata into the standard cohort output dataset
+**************************************************************************/
+%macro generate_stratified_rand(
+    root_path=,
+    table_type=SUBJECT,
+    cohort_no=,
+    method=,
+    stratification_factors=,
+    stratum_sample_sizes=,
+    treatment_labels=,
+    allocation=,
+    prefix=,
+    id_digits=5,
+    id_shift=0,
+    seed_mode=AUTO,
+    fixed_seed=,
+    overwrite=NO,
+    max_strata=10000
+);
+    %local
+        _rt_table_type
+        _rt_output_dataset
+        _rt_seed_dataset
+        _rt_size_count
+        _rt_size_errors
+        _rt_stratum_no
+        _rt_stratum_size
+        _rt_running_shift
+        _rt_total_n
+    ;
+
+    %let _rt_table_type=%upcase(%superq(table_type));
+    %let _rt_output_dataset=%sysfunc(lowcase(&_rt_table_type))_rand_cohort&cohort_no;
+    %let _rt_seed_dataset=%sysfunc(lowcase(&_rt_table_type))_seed_cohort&cohort_no;
+    %let _rt_running_shift=&id_shift;
+    %let _rt_total_n=0;
+
+    %rt_init_paths(root_path=&root_path);
+    %if &RT_PATH_READY ne 1 %then %return;
+
+    %if %upcase(&overwrite)=NO and
+        %sysfunc(exist(rtcohrt.&_rt_output_dataset)) %then %do;
+        %put ERROR: [RT_STRATIFIED] Output dataset rtcohrt.&_rt_output_dataset already exists. Use overwrite=YES to replace it.;
+        %return;
+    %end;
+
+    %generate_stratification_code(
+        root_path=&root_path,
+        stratification_factors=&stratification_factors,
+        overwrite=&overwrite,
+        max_strata=&max_strata
+    );
+
+    %if &RT_STRATA_VALID ne 1 %then %do;
+        %put ERROR: [RT_STRATIFIED] Stratification code generation failed.;
+        %return;
+    %end;
+
+    data work._rt_strata_code;
+        set rtcohrt.stratification_code;
+    run;
+
+    %let _rt_size_count=%sysfunc(countw(%superq(stratum_sample_sizes), %str( )));
+    %if &_rt_size_count ne &RT_STRATA_COUNT %then %do;
+        %put ERROR: [RT_STRATIFIED] stratum_sample_sizes must have &RT_STRATA_COUNT values. Found &_rt_size_count..;
+        %return;
+    %end;
+
+    data work._rt_stratum_sizes;
+        length _sizes _token $32767;
+        _sizes=symget('stratum_sample_sizes');
+        _errors=0;
+        do Stratum_No=1 to &RT_STRATA_COUNT;
+            _token=strip(scan(_sizes, Stratum_No, ' '));
+            Stratum_Sample_Size=input(_token, ?? best32.);
+            if missing(_token) or missing(Stratum_Sample_Size) then do;
+                put 'ERROR: [RT_STRATIFIED] Each stratum sample size must be a positive integer.';
+                _errors+1;
+            end;
+            else do;
+                if Stratum_Sample_Size < 1 or
+                   Stratum_Sample_Size ne int(Stratum_Sample_Size) then do;
+                    put 'ERROR: [RT_STRATIFIED] Each stratum sample size must be a positive integer.';
+                    _errors+1;
+                end;
+            end;
+            output;
+        end;
+        call symputx('_rt_size_errors', _errors, 'l');
+        keep Stratum_No Stratum_Sample_Size;
+    run;
+
+    %if &_rt_size_errors ne 0 %then %return;
+
+    proc datasets lib=work nolist nowarn;
+        delete _rt_stratified_all _rt_one_stratum _rt_final_stratified
+               _rt_seed_all _rt_one_seed _rt_final_seed;
+    quit;
+
+    %do _rt_stratum_no=1 %to &RT_STRATA_COUNT;
+        proc sql noprint;
+            select Stratum_Sample_Size
+            into :_rt_stratum_size trimmed
+            from work._rt_stratum_sizes
+            where Stratum_No=&_rt_stratum_no;
+        quit;
+
+        %generate_cohort_randomization(
+            root_path=&root_path,
+            table_type=&table_type,
+            cohort_no=&cohort_no,
+            method=&method,
+            sample_size=&_rt_stratum_size,
+            treatment_labels=&treatment_labels,
+            allocation=&allocation,
+            prefix=&prefix,
+            id_digits=&id_digits,
+            id_shift=&_rt_running_shift,
+            seed_mode=&seed_mode,
+            fixed_seed=&fixed_seed,
+            overwrite=YES
+        );
+
+        %if not %sysfunc(exist(rtcohrt.&_rt_output_dataset)) %then %do;
+            %put ERROR: [RT_STRATIFIED] Stratum &_rt_stratum_no did not generate rtcohrt.&_rt_output_dataset..;
+            %return;
+        %end;
+
+        data work._rt_one_stratum;
+            if _n_=1 then
+                set work._rt_strata_code(where=(Stratum_No=&_rt_stratum_no));
+            set rtcohrt.&_rt_output_dataset(
+                rename=(Randomization_Sequence=Stratum_Randomization_Sequence)
+            );
+            Randomization_Sequence=.;
+            label Stratum_Randomization_Sequence='Sequence within stratum';
+        run;
+
+        proc append base=work._rt_stratified_all
+                    data=work._rt_one_stratum force;
+        run;
+
+        %if %upcase(&seed_mode)=AUTO and
+            %sysfunc(exist(rtcohrt.&_rt_seed_dataset)) %then %do;
+            data work._rt_one_seed;
+                if _n_=1 then
+                    set work._rt_strata_code(where=(Stratum_No=&_rt_stratum_no));
+                set rtcohrt.&_rt_seed_dataset;
+            run;
+
+            proc append base=work._rt_seed_all
+                        data=work._rt_one_seed force;
+            run;
+        %end;
+
+        %let _rt_running_shift=%eval(&_rt_running_shift + &_rt_stratum_size);
+        %let _rt_total_n=%eval(&_rt_total_n + &_rt_stratum_size);
+    %end;
+
+    data work._rt_final_stratified;
+        set work._rt_stratified_all;
+        Randomization_Sequence=_n_;
+        label Randomization_Sequence='Sequence in combined cohort table';
+    run;
+
+    %if %upcase(&seed_mode)=AUTO and %sysfunc(exist(work._rt_seed_all)) %then %do;
+        data work._rt_final_seed;
+            set work._rt_seed_all;
+            length Randomization_Dataset $32;
+            Randomization_Dataset="&_rt_output_dataset";
+        run;
+    %end;
+
+    %rt_init_paths(root_path=&root_path);
+    %if &RT_PATH_READY ne 1 %then %return;
+
+    proc datasets lib=rtcohrt nolist nowarn;
+        delete &_rt_output_dataset &_rt_seed_dataset;
+    quit;
+
+    data rtcohrt.&_rt_output_dataset;
+        set work._rt_final_stratified;
+    run;
+
+    %if %upcase(&seed_mode)=AUTO and %sysfunc(exist(work._rt_final_seed)) %then %do;
+        data rtcohrt.&_rt_seed_dataset;
+            set work._rt_final_seed;
+        run;
+    %end;
+
+    proc datasets lib=work nolist nowarn;
+        delete _rt_strata_code _rt_stratum_sizes
+               _rt_stratified_all _rt_one_stratum _rt_final_stratified
+               _rt_seed_all _rt_one_seed _rt_final_seed;
+    quit;
+
+    %put NOTE: [RT_STRATIFIED] Created rtcohrt..&_rt_output_dataset with &_rt_total_n records across &RT_STRATA_COUNT strata.;
+    %if %upcase(&seed_mode)=AUTO %then
+        %put NOTE: [RT_STRATIFIED] Created rtcohrt..&_rt_seed_dataset with one seed audit row per stratum.;
+%mend generate_stratified_rand;
