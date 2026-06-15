@@ -1,0 +1,7 @@
+Cohort_No,Cohort_Name,Treatment_Code,Treatment_Group,N
+1,Low Dose Cohort,1,Test Group,8
+1,Low Dose Cohort,2,Placebo,2
+2,Middle Dose Cohort,1,Test Group,8
+2,Middle Dose Cohort,2,Placebo,2
+3,High Dose Cohort,1,Test Group,8
+3,High Dose Cohort,2,Placebo,2

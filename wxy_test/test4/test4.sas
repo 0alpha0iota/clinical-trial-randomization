@@ -18,8 +18,8 @@
 
 options mprint mlogic symbolgen validvarname=v7;
 
-%let repo_root=.;
-%let test_root=./wxy_test/test4;
+%let repo_root=D:\W1nn1e\Documents\innoclinic\Randomization\clinical-trial-randomization;
+%let test_root=D:\W1nn1e\Documents\innoclinic\Randomization\clinical-trial-randomization\wxy_test\test4;
 %let overwrite=YES;
 
 %include "&repo_root./macros/assertions.sas";
