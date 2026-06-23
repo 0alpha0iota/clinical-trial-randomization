@@ -1,0 +1,9 @@
+Stratum_No,Sex,Age_Group,Treatment_Code,Treatment_Group,N
+1,Male,Under65,1,Test Group,8
+1,Male,Under65,2,Placebo,2
+2,Male,Over65,1,Test Group,8
+2,Male,Over65,2,Placebo,2
+3,Female,Under65,1,Test Group,8
+3,Female,Under65,2,Placebo,2
+4,Female,Over65,1,Test Group,8
+4,Female,Over65,2,Placebo,2

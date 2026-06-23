@@ -1,0 +1,9 @@
+Stratum_No,Sex,Age_Group,Block_No,Test_Group_N,Placebo_N,Block_Check
+1,Male,Under65,1,4,1,PASS
+1,Male,Under65,2,4,1,PASS
+2,Male,Over65,1,4,1,PASS
+2,Male,Over65,2,4,1,PASS
+3,Female,Under65,1,4,1,PASS
+3,Female,Under65,2,4,1,PASS
+4,Female,Over65,1,4,1,PASS
+4,Female,Over65,2,4,1,PASS

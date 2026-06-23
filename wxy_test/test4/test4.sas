@@ -18,14 +18,14 @@
 
 options mprint mlogic symbolgen validvarname=v7;
 
-%let repo_root=.;
-%let test_root=./wxy_test/test4;
+%let repo_root=D:\W1nn1e\Documents\innoclinic\Randomization\clinical-trial-randomization;
+%let test_root=D:\W1nn1e\Documents\innoclinic\Randomization\clinical-trial-randomization\wxy_test\test4;
 %let overwrite=YES;
 
 %include "&repo_root./macros/assertions.sas";
 %include "&repo_root./macros/seed_utils.sas";
 %include "&repo_root./macros/randomization_engine.sas";
-%include "&repo_root./macros/reporting.sas";
+%include "&repo_root./macros/reporting_new.sas";
 
 %macro run_test4_cohort(cohort_no=, cohort_name=, id_shift=);
     %generate_cohort_randomization(

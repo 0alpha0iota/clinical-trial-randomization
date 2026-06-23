@@ -1,4 +1,4 @@
-/**************************************************************************
+﻿/**************************************************************************
 * File: reporting.sas
 *
 * Public macro
@@ -26,6 +26,9 @@
         _rt_method
         _rt_output_file
         _rt_overwrite
+        _rt_has_strata
+        _rt_strata_columns
+        _rt_saved_papersize _rt_saved_orientation _rt_saved_date _rt_saved_number _rt_saved_byline
     ;
 
     %let _rt_table_type=%upcase(%superq(table_type));
@@ -72,12 +75,51 @@
         from rtcohrt.&_rt_dataset;
     quit;
 
+    %let _rt_has_strata=0;
+    %let _rt_strata_columns=;
+    proc sql noprint;
+        select count(*)
+        into :_rt_has_strata trimmed
+        from dictionary.columns
+        where libname='RTCOHRT'
+          and memname="%upcase(&_rt_dataset)"
+          and upcase(name)='STRATUM_NO';
+
+        select name
+        into :_rt_strata_columns separated by ' '
+        from dictionary.columns
+        where libname='RTCOHRT'
+          and memname="%upcase(&_rt_dataset)"
+          and upcase(name) not in (
+              'TABLE_TYPE',
+              'COHORT_NO',
+              'RANDOMIZATION_METHOD',
+              'RANDOMIZATION_SEQUENCE',
+              'STRATUM_NO',
+              'STRATUM_LABEL',
+              'STRATUM_CODE',
+              'STRATUM_RANDOMIZATION_SEQUENCE',
+              'RAND_NUM',
+              'RAND_ID',
+              'TREATMENT_CODE',
+              'TREATMENT_GROUP',
+              'ALLOCATION_SPEC',
+              'BLOCK_NO',
+              'POSITION_IN_BLOCK',
+              'ALLOCATION_POSITION'
+          )
+        order by varnum;
+    quit;
+
     /*
      * Subject listings are ordered by randomization ID. Drug listings are
      * ordered by treatment group first to support labeling and packaging.
      */
     proc sort data=rtcohrt.&_rt_dataset out=work._rt_report_data;
-        %if &_rt_table_type=SUBJECT %then %do;
+        %if &_rt_has_strata > 0 %then %do;
+            by Stratum_No Stratum_Label &_rt_strata_columns Rand_ID;
+        %end;
+        %else %if &_rt_table_type=SUBJECT %then %do;
             by Rand_ID;
         %end;
         %else %do;
@@ -85,8 +127,21 @@
         %end;
     run;
 
+    %let _rt_saved_papersize=%sysfunc(getoption(papersize, keyword));
+    %let _rt_saved_orientation=%sysfunc(getoption(orientation, keyword));
+    %let _rt_saved_date=%sysfunc(getoption(date));
+    %let _rt_saved_number=%sysfunc(getoption(number));
+    %let _rt_saved_byline=%sysfunc(getoption(byline));
+
+    ods listing close;
+    options papersize=A4 orientation=PORTRAIT nodate nonumber nobyline;
     ods escapechar='^';
-    ods rtf file="&_rt_output_file" style=journal bodytitle;
+    %if &_rt_has_strata > 0 %then %do;
+        ods rtf file="&_rt_output_file" style=journal startpage=bygroup;
+    %end;
+    %else %do;
+        ods rtf file="&_rt_output_file" style=journal;
+    %end;
 
     title1 "&title1";
     %if not %sysevalf(%superq(title2)=, boolean) %then %do;
@@ -94,6 +149,10 @@
     %end;
 
     proc report data=work._rt_report_data nowd missing split='|';
+        %if &_rt_has_strata > 0 %then %do;
+            by Stratum_No Stratum_Label &_rt_strata_columns;
+        %end;
+
         %if &_rt_method=BLOCK %then %do;
             columns Rand_ID Treatment_Group Block_No Position_In_Block;
         %end;
@@ -106,11 +165,13 @@
 
         %if &_rt_method=BLOCK %then %do;
             define Block_No / display width=10 'Block No.';
-            define Position_In_Block / display width=16 '区组内排序号';
+            define Position_In_Block / display width=16 '区组位置';
         %end;
     run;
 
     ods rtf close;
+    ods listing;
+    options &_rt_saved_papersize &_rt_saved_orientation &_rt_saved_date &_rt_saved_number &_rt_saved_byline;
     title;
 
     proc datasets lib=work nolist nowarn;
