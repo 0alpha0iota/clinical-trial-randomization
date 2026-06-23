@@ -1,4 +1,4 @@
-/**************************************************************************
+﻿/**************************************************************************
 * File: seed_utils.sas
 *
 * Public macro
@@ -76,7 +76,7 @@
     data _null_;
         length _systim10 $32;
         _produced_datetime=datetime();
-        _relative_time=round(_produced_datetime, 0.1);
+        _relative_time=round(_produced_datetime, 0.001);
         _systim10=put(_relative_time*10, best32.);
         _seed=input(substr(_systim10, lengthn(_systim10)-3), best32.);
         if _seed=0 then _seed=1;
@@ -99,7 +99,7 @@
             length
                 Table_Type $8
                 Seed_Mode $5
-                System_Relative_Time_Character $12
+                System_Relative_Time_Character $20
                 Production_Date_Character $10
                 Production_Datetime_Character $19
                 SAS_Version $64
@@ -111,7 +111,7 @@
             Seed_Mode='AUTO';
             Seed=&&&out_seed_var;
             System_Relative_Time=&&&out_relative_time_var;
-            System_Relative_Time_Character=put(System_Relative_Time, 12.1);
+            System_Relative_Time_Character=put(System_Relative_Time, 20.3);
             Production_Date=input("&&&out_date_var", yymmdd10.);
             Production_Datetime=input("&&&out_datetime_var", e8601dt19.);
             Production_Date_Character="&&&out_date_var";
@@ -132,3 +132,4 @@
 
     %put NOTE: [RT_SEED] table_type=%upcase(&table_type) cohort=&cohort_no mode=AUTO seed=&&&out_seed_var.;
 %mend generate_seed;
+

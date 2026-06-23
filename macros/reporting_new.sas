@@ -1,4 +1,4 @@
-/**************************************************************************
+﻿/**************************************************************************
 * File: reporting.sas
 *
 * Public macro
@@ -14,35 +14,35 @@ proc template;
 	define style styles.three;
 		parent = styles.default;
 
-        /* ������ɫ��ȡ����ɫ����ɫ������ͳһΪ��ɫ */
+        /* 定义颜色：取消灰色、黄色背景，统一为白色 */
         class colors /
             "gheader" = cx000000
             "docbg" = cxFFFFFF
             "docfg" = cx000000
             "tableborder" = cxCCCCCC
-            "headerbg" = cxFFFFFF  /* ԭ��ɫ����Ϊ��ɫ */
+            "headerbg" = cxFFFFFF  /* 原灰色→改为白色 */
             "headerfg" = cx000000
-            "headerbgstrong" = cxFFFFFF  /* ԭ��ɫ����Ϊ��ɫ */
+            "headerbgstrong" = cxFFFFFF  /* 原灰色→改为白色 */
             "headerfgstrong" = cx000000
-            "headerbgemph" = cxFFFFFF  /* ԭ��ɫ����Ϊ��ɫ */
+            "headerbgemph" = cxFFFFFF  /* 原灰色→改为白色 */
             "headerfgemph" = cx0000FF
-            "captionbg" = cxFFFFFF  /* ԭ��ɫ����Ϊ��ɫ */
+            "captionbg" = cxFFFFFF  /* 原灰色→改为白色 */
             "captionfg" = cx000000
-            "databgstrong" = cxFFFFFF  /* ԭ��ɫ����Ϊ��ɫ */
+            "databgstrong" = cxFFFFFF  /* 原灰色→改为白色 */
             "datafgstrong" = cx000000
-            "notebg" = cxFFFFFF  /* ԭ��ɫ����Ϊ��ɫ����ӦODS RTF TEXT�ı����� */
-            "notefg" = cx000000  /* ԭ��ɫ���֡���Ϊ��ɫ����ѡ������ */
+            "notebg" = cxFFFFFF  /* 原黄色→改为白色（对应ODS RTF TEXT的背景） */
+            "notefg" = cx000000  /* 原黄色文字→改为黑色（可选调整） */
             "databgemph" = cxF8F8F8
             "datafgemph" = cx0000FF
             "databg" = cxFFFFFF
             "datafg" = cx000000
             "batchfg" = cx000000
-            "batchbg" = cxFFFFFF  /* ԭ��ɫ����Ϊ��ɫ */
+            "batchbg" = cxFFFFFF  /* 原灰色→改为白色 */
             "tablebg" = cxFFFFFF
             "proctitlefg" = cx000000
-            "proctitlebg" = cxFFFFFF  /* ԭ��ɫ����Ϊ��ɫ */
+            "proctitlebg" = cxFFFFFF  /* 原灰色→改为白色 */
             "systitlefg" = cx000000
-            "systitlebg" = cxFFFFFF  /* ԭ��ɫ����Ϊ��ɫ */
+            "systitlebg" = cxFFFFFF  /* 原灰色→改为白色 */
             "bylinebg" = cxFFFFFF
             "bylinefg" = cx666666
             "contitlefg" = cx000000
@@ -53,7 +53,7 @@ proc template;
             "link1" = cx0000FF
             "link2" = cx800080;
         
-        /* �������壨����ԭ���ã� */
+        /* 定义字体（保持原配置） */
         class fonts /
             "TitleFont" = ("simsun", 12pt )
             "headingFont" = ("simsun", 11pt)
@@ -67,18 +67,18 @@ proc template;
             "BatchFixedFont" = ("Courier New", 9pt)
             "TitleFont2" = ("simsun", 14pt, bold);
         
-        /* ͼ����ɫ������ԭ���ã� */
+        /* 图表颜色（保持原配置） */
         class GraphColors /
             "gheader" = cx000000;
         
-        /* ������ʽ������ԭ���ã� */
+        /* 表格样式（保持原配置） */
         replace table from output /
             frame=hsides;
         
-        /* ��ɫ�б�������ԭ���ã� */
+        /* 颜色列表（保持原配置） */
         replace color_list / 'bgh'=white;
         
-        /* �ĵ��߾ࣨ����ԭ���ã� */
+        /* 文档边距（保持原配置） */
         replace body from document /
             bottommargin = 20mm
             topmargin = 20mm
@@ -93,7 +93,7 @@ run;
     table_type=SUBJECT,
     cohort_no=,
     output_file=,
-    title1=Randomization Table,
+    title1=,
     title2=,
     overwrite=NO,
     protocol_name=,
@@ -103,7 +103,7 @@ run;
     subject_naming=Subject,
     cohort_name=,
     randomization_version=,
-    simulation_label=%str(Simulation/Test Use)
+    simulation_label=%str(模拟/测试用)
 );
     %local
         _rt_table_type _rt_dataset _rt_seed_dataset _rt_method
@@ -112,7 +112,8 @@ run;
         _rt_protocol_name _rt_protocol_sn _rt_sponsor _rt_producer
         _rt_subject_naming _rt_cohort_name _rt_randomization_version
         _rt_report_type_title _rt_seed_text _rt_datetime_text _rt_date_text
-        _rt_group_names _rt_allocation_raw _rt_allocation_display _rt_block_length
+        _rt_group_names _rt_allocation_raw _rt_allocation_display _rt_block_length _rt_has_relative_time_char
+        _rt_saved_papersize _rt_saved_orientation _rt_saved_date _rt_saved_number _rt_saved_byline
     ;
 
     %let _rt_table_type=%upcase(%superq(table_type));
@@ -229,10 +230,10 @@ run;
         quit;
     %end;
 
-    %if %upcase(&_rt_method)=SIMPLE and &_rt_has_strata > 0 %then %let _rt_method_display=Stratified simple randomization;
-    %else %if %upcase(&_rt_method)=BLOCK and &_rt_has_strata > 0 %then %let _rt_method_display=Stratified block randomization;
-    %else %if %upcase(&_rt_method)=SIMPLE %then %let _rt_method_display=Simple randomization;
-    %else %if %upcase(&_rt_method)=BLOCK %then %let _rt_method_display=Block randomization;
+    %if %upcase(&_rt_method)=SIMPLE and &_rt_has_strata > 0 %then %let _rt_method_display=分层随机;
+    %else %if %upcase(&_rt_method)=BLOCK and &_rt_has_strata > 0 %then %let _rt_method_display=分层区组随机;
+    %else %if %upcase(&_rt_method)=SIMPLE %then %let _rt_method_display=简单随机;
+    %else %if %upcase(&_rt_method)=BLOCK %then %let _rt_method_display=区组随机;
     %else %let _rt_method_display=&_rt_method;
 
     %let _rt_seed_text=;
@@ -248,18 +249,32 @@ run;
             quit;
         %end;
         %else %do;
+            proc sql noprint;
+                select count(*) into :_rt_has_relative_time_char trimmed
+                from dictionary.columns
+                where libname='RTCOHRT' and memname="%upcase(&_rt_seed_dataset)"
+                  and upcase(name)='SYSTEM_RELATIVE_TIME_CHARACTER';
+            quit;
+
             proc sql noprint outobs=1;
-                select Seed, System_Relative_Time, Production_Date_Character
-                into :_rt_seed_text trimmed, :_rt_datetime_text trimmed, :_rt_date_text trimmed
-                from rtcohrt.&_rt_seed_dataset;
+                %if &_rt_has_relative_time_char > 0 %then %do;
+                    select Seed, System_Relative_Time_Character, Production_Date_Character
+                    into :_rt_seed_text trimmed, :_rt_datetime_text trimmed, :_rt_date_text trimmed
+                    from rtcohrt.&_rt_seed_dataset;
+                %end;
+                %else %do;
+                    select Seed, strip(put(System_Relative_Time, 20.3)), Production_Date_Character
+                    into :_rt_seed_text trimmed, :_rt_datetime_text trimmed, :_rt_date_text trimmed
+                    from rtcohrt.&_rt_seed_dataset;
+                %end;
             quit;
         %end;
     %end;
 
     %if %sysevalf(%superq(_rt_date_text)=, boolean) %then %let _rt_date_text=%sysfunc(today(), yymmdd10.);
 
-    %if &_rt_table_type=SUBJECT %then %let _rt_report_type_title=&_rt_subject_naming. randomization table;
-    %else %let _rt_report_type_title=Drug randomization table;
+    %if &_rt_table_type=SUBJECT %then %let _rt_report_type_title=&_rt_subject_naming.随机表;
+    %else %let _rt_report_type_title=药物随机表;
 
     proc sort data=rtcohrt.&_rt_dataset out=work._rt_report_data;
         %if &_rt_has_strata > 0 %then %do;
@@ -273,12 +288,20 @@ run;
         %end;
     run;
 
+    %let _rt_saved_papersize=%sysfunc(getoption(papersize, keyword));
+    %let _rt_saved_orientation=%sysfunc(getoption(orientation, keyword));
+    %let _rt_saved_date=%sysfunc(getoption(date));
+    %let _rt_saved_number=%sysfunc(getoption(number));
+    %let _rt_saved_byline=%sysfunc(getoption(byline));
+
+    ods listing close;
+    options papersize=A4 orientation=PORTRAIT nodate nonumber nobyline;
     ods escapechar='^';
     %if &_rt_has_strata > 0 %then %do;
-        ods rtf file="&_rt_output_file" style=styles.three bodytitle startpage=bygroup;
+        ods rtf file="&_rt_output_file" style=styles.three startpage=bygroup;
     %end;
     %else %do;
-        ods rtf file="&_rt_output_file" style=styles.three bodytitle;
+        ods rtf file="&_rt_output_file" style=styles.three;
     %end;
 
     ods rtf text= "^R/RTF'\b \pard\qc \fs28'&_rt_protocol_name.^R/RTF'\par'";
@@ -288,78 +311,97 @@ run;
         ods rtf text= "^R/RTF'\b\pard \qc \fs24'&_rt_cohort_name.^R/RTF'\par'";
     %end;
 
-    ods rtf text= "Protocol No.: &_rt_protocol_sn.";
-    ods rtf text= "Sponsor: &_rt_sponsor.";
-    ods rtf text= "Production date: &_rt_date_text.";
-    ods rtf text= "Randomization method: &_rt_method_display.";
-    ods rtf text= "Random seed: &_rt_seed_text.";
-    ods rtf text= "Randomization ratio: &_rt_group_names. = &_rt_allocation_display.";
+    ods rtf text= "方案编号： &_rt_protocol_sn.";
+    ods rtf text= "申办单位：&_rt_sponsor.";
+    ods rtf text= "产生日期： &_rt_date_text.";
+    ods rtf text= "随机分配方法：&_rt_method_display.";
+    ods rtf text= "随机种子数：&_rt_seed_text.";
+    ods rtf text= "随机分配比例：&_rt_group_names. = &_rt_allocation_display.";
 
     %if %upcase(&_rt_method)=BLOCK %then %do;
-        ods rtf text= "Block length: &_rt_block_length.";
+        ods rtf text= "区组长度： &_rt_block_length.";
     %end;
 
     %if &_rt_has_strata > 0 %then %do;
-        title4 "Stratum No.: #byval(Stratum_No)  Stratum: #byval(Stratum_Label)";
+        title4 "层号： #byval(Stratum_No)  层名： #byval(Stratum_Label)";
     %end;
+
+    footnote
+        J=L FONT=Tahoma HEIGHT=2.5 "保密"
+        J=C FONT=Tahoma HEIGHT=2.5 " Page ^{THISPAGE} of ^{LASTPAGE}"
+        J=R FONT=Tahoma HEIGHT=2.5 "&simulation_label.";
 
     proc report data=work._rt_report_data nowd missing split='|';
         %if &_rt_has_strata > 0 %then %do;
             by &_rt_strata_by;
         %end;
 
-        %if %upcase(&_rt_method)=SIMPLE %then %do;
-            columns Rand_ID Treatment_Group;
+        %if &_rt_table_type=SUBJECT %then %do;
+            %if %upcase(&_rt_method)=SIMPLE %then %do;
+                columns Rand_ID Treatment_Group;
+            %end;
+            %else %if %upcase(&_rt_method)=BLOCK and &_rt_has_strata > 0 %then %do;
+                columns Rand_ID %if &_rt_has_sub_id > 0 %then %do; Rand_Sub_ID %end; Stratum_No Block_No Position_In_Block Treatment_Group;
+            %end;
+            %else %if %upcase(&_rt_method)=BLOCK %then %do;
+                columns Rand_ID %if &_rt_has_sub_id > 0 %then %do; Rand_Sub_ID %end; Block_No Position_In_Block Treatment_Group;
+            %end;
+            %else %do;
+                columns Rand_ID Treatment_Group;
+            %end;
         %end;
-        %else %if %upcase(&_rt_method)=BLOCK and &_rt_has_strata > 0 %then %do;
-            columns Rand_ID %if &_rt_has_sub_id > 0 %then %do; Rand_Sub_ID %end; Stratum_No Block_No Position_In_Block Treatment_Group;
-        %end;
-        %else %if %upcase(&_rt_method)=BLOCK %then %do;
-            columns Rand_ID %if &_rt_has_sub_id > 0 %then %do; Rand_Sub_ID %end; Block_No Position_In_Block Treatment_Group;
-        %end;
-        %else %do;
-            columns Rand_ID Treatment_Group;
+        %else %if &_rt_table_type=DRUG %then %do;
+            %if %upcase(&_rt_method)=SIMPLE %then %do;
+                columns Rand_ID Treatment_Group;
+            %end;
+            %else %if %upcase(&_rt_method)=BLOCK and &_rt_has_strata > 0 %then %do;
+                columns Rand_ID Stratum_No Block_No Position_In_Block Treatment_Group;
+            %end;
+            %else %if %upcase(&_rt_method)=BLOCK %then %do;
+                columns Rand_ID Block_No Position_In_Block Treatment_Group;
+            %end;
+            %else %do;
+                columns Rand_ID Treatment_Group;
+            %end;
         %end;
 
         %if &_rt_table_type=SUBJECT %then %do;
-            define Rand_ID / display "&_rt_subject_naming. randomization ID" center style(column)={cellwidth=1.1in};
+            define Rand_ID / display "&_rt_subject_naming.随机号" center style(column)={cellwidth=1.1in};
             %if &_rt_has_sub_id > 0 %then %do;
-                define Rand_Sub_ID / display "Backup &_rt_subject_naming. randomization ID" center style(column)={cellwidth=1.5in};
+                define Rand_Sub_ID / display "替补&_rt_subject_naming.随机号" center style(column)={cellwidth=1.5in};
             %end;
-            define Treatment_Group / display width=30 "Treatment group" center style(column)={cellwidth=10%};
+            define Treatment_Group / display width=30 "组别" center style(column)={cellwidth=10%};
         %end;
         %else %do;
-            define Rand_ID / display "Drug number" center style(column)={cellwidth=1.5in};
-            define Treatment_Group / display width=30 "Treatment group" center style(column)={cellwidth=1.5in};
+            define Rand_ID / display "药物编号" center style(column)={cellwidth=1.5in};
+            define Treatment_Group / display width=30 "组别" center style(column)={cellwidth=1.5in};
         %end;
 
         %if %upcase(&_rt_method)=BLOCK and &_rt_has_strata > 0 %then %do;
-            define Stratum_No / display "Stratum No." center style(column)={cellwidth=0.6in};
-            define Block_No / display "Block No. within stratum" center style(column)={cellwidth=1.0in};
-            define Position_In_Block / display "Position within block" center style(column)={cellwidth=1.1in};
+            define Stratum_No / display "层号" center style(column)={cellwidth=0.6in};
+            define Block_No / display "层内区组号" center style(column)={cellwidth=1.0in};
+            define Position_In_Block / display "区组内排序号" center style(column)={cellwidth=1.1in};
         %end;
         %else %if %upcase(&_rt_method)=BLOCK %then %do;
-            define Block_No / display "Block No." center style(column)={cellwidth=10%};
-            define Position_In_Block / display "Position within block" center style(column)={cellwidth=1.1in};
+            define Block_No / display "区组号" center style(column)={cellwidth=10%};
+            define Position_In_Block / display "区组内排序号" center style(column)={cellwidth=1.1in};
         %end;
 
-        footnote
-            J=L FONT=Tahoma HEIGHT=2.5 "Confidential"
-            J=C FONT=Tahoma HEIGHT=2.5 " Page ^{THISPAGE} of ^{LASTPAGE}"
-            J=R FONT=Tahoma HEIGHT=2.5 "&simulation_label.";
     run;
 
     %if &_rt_has_strata > 0 %then %do;
-        ods rtf text= "Note: In stratified randomization, each stratum has an independently generated random seed. Seed, relative time, and production time are recorded in &_rt_seed_dataset..";
+        ods rtf text= "注：在分层随机化中，每个分层均有独立生成的随机种子。随机种子、相对时间和生成时间记录于 &_rt_seed_dataset. 数据集中。";
     %end;
     %else %do;
-        ods rtf text= "Note: The random seed is generated from the final six digits of the current SAS system-relative time in seconds. Current relative time is &_rt_datetime_text.; random seed is &_rt_seed_text..";
+        ods rtf text= "注：随机种子由当前 SAS 系统相对时间（以秒为单位）的最后六位数字生成。当前相对时间为 &_rt_datetime_text.，故随机种子数为&_rt_seed_text..";
     %end;
 
-    ods rtf text= "^R/RTF'\b\pard \ql \fs24'Producer: &_rt_producer.^R/RTF'\par'";
-    ods rtf text= "^R/RTF'\b\pard \ql \fs24'Randomization plan version: &_rt_randomization_version.^R/RTF'\par'";
+    ods rtf text= "^R/RTF'\b\pard \ql \fs24'制作单位: &_rt_producer.^R/RTF'\par'";
+    ods rtf text= "^R/RTF'\b\pard \ql \fs24'随机化方案版本号： &_rt_randomization_version.^R/RTF'\par'";
 
     ods rtf close;
+    ods listing;
+    options &_rt_saved_papersize &_rt_saved_orientation &_rt_saved_date &_rt_saved_number &_rt_saved_byline;
     title;
     footnote;
 
@@ -369,3 +411,6 @@ run;
 
     %put NOTE: [RT_REPORT] Created &_rt_output_file..;
 %mend generate_randomization_rtf;
+
+
+

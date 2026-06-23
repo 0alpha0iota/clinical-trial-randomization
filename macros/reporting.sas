@@ -1,4 +1,4 @@
-/**************************************************************************
+Ôªø/**************************************************************************
 * File: reporting.sas
 *
 * Public macro
@@ -28,6 +28,7 @@
         _rt_overwrite
         _rt_has_strata
         _rt_strata_columns
+        _rt_saved_papersize _rt_saved_orientation _rt_saved_date _rt_saved_number _rt_saved_byline
     ;
 
     %let _rt_table_type=%upcase(%superq(table_type));
@@ -126,12 +127,20 @@
         %end;
     run;
 
+    %let _rt_saved_papersize=%sysfunc(getoption(papersize, keyword));
+    %let _rt_saved_orientation=%sysfunc(getoption(orientation, keyword));
+    %let _rt_saved_date=%sysfunc(getoption(date));
+    %let _rt_saved_number=%sysfunc(getoption(number));
+    %let _rt_saved_byline=%sysfunc(getoption(byline));
+
+    ods listing close;
+    options papersize=A4 orientation=PORTRAIT nodate nonumber nobyline;
     ods escapechar='^';
     %if &_rt_has_strata > 0 %then %do;
-        ods rtf file="&_rt_output_file" style=journal bodytitle startpage=bygroup;
+        ods rtf file="&_rt_output_file" style=journal startpage=bygroup;
     %end;
     %else %do;
-        ods rtf file="&_rt_output_file" style=journal bodytitle;
+        ods rtf file="&_rt_output_file" style=journal;
     %end;
 
     title1 "&title1";
@@ -156,11 +165,13 @@
 
         %if &_rt_method=BLOCK %then %do;
             define Block_No / display width=10 'Block No.';
-            define Position_In_Block / display width=16 '«¯◊ÈŒª÷√';
+            define Position_In_Block / display width=16 'Âå∫ÁªÑ‰ΩçÁΩÆ';
         %end;
     run;
 
     ods rtf close;
+    ods listing;
+    options &_rt_saved_papersize &_rt_saved_orientation &_rt_saved_date &_rt_saved_number &_rt_saved_byline;
     title;
 
     proc datasets lib=work nolist nowarn;
