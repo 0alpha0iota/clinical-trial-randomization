@@ -5,11 +5,10 @@
 * ------------
 * %generate_seed
 *
-* AUTO mode derives the PROC PLAN seed from the last four digits of the
-* current SAS system-relative datetime rounded to 0.1 seconds, multiplied
-* by 10. SAS datetime values are elapsed seconds since 01JAN1960.
-* The raw value, production date, production datetime, and generated seed
-* are retained in an audit dataset.
+* AUTO mode derives the PROC PLAN seed from the last six decimal digits
+* of the current SAS system-relative datetime value.  SAS datetime values
+* are elapsed seconds since 01JAN1960.  The raw value, production date,
+* production datetime, and generated seed are retained in an audit dataset.
 *
 * FIXED mode accepts a designated validation seed.  It writes the seed to
 * the SAS log and returns it in a macro variable, but intentionally creates
@@ -66,19 +65,20 @@
     %end;
 
     /*
+     * The integer portion is used deliberately: each decimal seed is the
+     * last six digits of elapsed system seconds.  A zero result is changed
+     * to one because PROC PLAN requires a positive seed.
      * Pause before AUTO generation so consecutive cohort calls do not use
-     * the same rounded 0.1-second value.
+     * the same integer second.
      */
     data _null_;
         call sleep(300, 0.01);
     run;
 
     data _null_;
-        length _systim10 $32;
         _produced_datetime=datetime();
         _relative_time=round(_produced_datetime, 0.001);
-        _systim10=put(_relative_time*10, best32.);
-        _seed=input(substr(_systim10, lengthn(_systim10)-3), best32.);
+        _seed=mod(floor(_relative_time), 1000000);
         if _seed=0 then _seed=1;
 
         call symputx("&out_seed_var", _seed, 'g');
@@ -124,7 +124,6 @@
 
             label Seed='Generated random seed'
                   System_Relative_Time='Elapsed system seconds since 01JAN1960'
-                  System_Relative_Time_Character='Elapsed system seconds since 01JAN1960'
                   Production_Date='Seed production date'
                   Production_Datetime='Seed production datetime';
         run;
