@@ -1,4 +1,4 @@
-ï»¿/**************************************************************************
+/**************************************************************************
 * File: reporting.sas
 *
 * Public macro
@@ -14,35 +14,35 @@ proc template;
 	define style styles.three;
 		parent = styles.default;
 
-        /* å®šä¹‰é¢œè‰²ï¼šå–æ¶ˆç°è‰²ã€é»„è‰²èƒŒæ™¯ï¼Œç»Ÿä¸€ä¸ºç™½è‰² */
+        /* ¶¨ÒåÑÕÉ«£ºÈ¡Ïû»ÒÉ«¡¢»ÆÉ«±³¾°£¬Í³Ò»Îª°×É« */
         class colors /
             "gheader" = cx000000
             "docbg" = cxFFFFFF
             "docfg" = cx000000
             "tableborder" = cxCCCCCC
-            "headerbg" = cxFFFFFF  /* åŸç°è‰²â†’æ”¹ä¸ºç™½è‰² */
+            "headerbg" = cxFFFFFF  /* Ô­»ÒÉ«¡ú¸ÄÎª°×É« */
             "headerfg" = cx000000
-            "headerbgstrong" = cxFFFFFF  /* åŸç°è‰²â†’æ”¹ä¸ºç™½è‰² */
+            "headerbgstrong" = cxFFFFFF  /* Ô­»ÒÉ«¡ú¸ÄÎª°×É« */
             "headerfgstrong" = cx000000
-            "headerbgemph" = cxFFFFFF  /* åŸç°è‰²â†’æ”¹ä¸ºç™½è‰² */
+            "headerbgemph" = cxFFFFFF  /* Ô­»ÒÉ«¡ú¸ÄÎª°×É« */
             "headerfgemph" = cx0000FF
-            "captionbg" = cxFFFFFF  /* åŸç°è‰²â†’æ”¹ä¸ºç™½è‰² */
+            "captionbg" = cxFFFFFF  /* Ô­»ÒÉ«¡ú¸ÄÎª°×É« */
             "captionfg" = cx000000
-            "databgstrong" = cxFFFFFF  /* åŸç°è‰²â†’æ”¹ä¸ºç™½è‰² */
+            "databgstrong" = cxFFFFFF  /* Ô­»ÒÉ«¡ú¸ÄÎª°×É« */
             "datafgstrong" = cx000000
-            "notebg" = cxFFFFFF  /* åŸé»„è‰²â†’æ”¹ä¸ºç™½è‰²ï¼ˆå¯¹åº”ODS RTF TEXTçš„èƒŒæ™¯ï¼‰ */
-            "notefg" = cx000000  /* åŸé»„è‰²æ–‡å­—â†’æ”¹ä¸ºé»‘è‰²ï¼ˆå¯é€‰è°ƒæ•´ï¼‰ */
+            "notebg" = cxFFFFFF  /* Ô­»ÆÉ«¡ú¸ÄÎª°×É«£¨¶ÔÓ¦ODS RTF TEXTµÄ±³¾°£© */
+            "notefg" = cx000000  /* Ô­»ÆÉ«ÎÄ×Ö¡ú¸ÄÎªºÚÉ«£¨¿ÉÑ¡µ÷Õû£© */
             "databgemph" = cxF8F8F8
             "datafgemph" = cx0000FF
             "databg" = cxFFFFFF
             "datafg" = cx000000
             "batchfg" = cx000000
-            "batchbg" = cxFFFFFF  /* åŸç°è‰²â†’æ”¹ä¸ºç™½è‰² */
+            "batchbg" = cxFFFFFF  /* Ô­»ÒÉ«¡ú¸ÄÎª°×É« */
             "tablebg" = cxFFFFFF
             "proctitlefg" = cx000000
-            "proctitlebg" = cxFFFFFF  /* åŸç°è‰²â†’æ”¹ä¸ºç™½è‰² */
+            "proctitlebg" = cxFFFFFF  /* Ô­»ÒÉ«¡ú¸ÄÎª°×É« */
             "systitlefg" = cx000000
-            "systitlebg" = cxFFFFFF  /* åŸç°è‰²â†’æ”¹ä¸ºç™½è‰² */
+            "systitlebg" = cxFFFFFF  /* Ô­»ÒÉ«¡ú¸ÄÎª°×É« */
             "bylinebg" = cxFFFFFF
             "bylinefg" = cx666666
             "contitlefg" = cx000000
@@ -53,7 +53,7 @@ proc template;
             "link1" = cx0000FF
             "link2" = cx800080;
         
-        /* å®šä¹‰å­—ä½“ï¼ˆä¿æŒåŸé…ç½®ï¼‰ */
+        /* ¶¨Òå×ÖÌå£¨±£³ÖÔ­ÅäÖÃ£© */
         class fonts /
             "TitleFont" = ("simsun", 12pt )
             "headingFont" = ("simsun", 11pt)
@@ -67,18 +67,18 @@ proc template;
             "BatchFixedFont" = ("Courier New", 9pt)
             "TitleFont2" = ("simsun", 14pt, bold);
         
-        /* å›¾è¡¨é¢œè‰²ï¼ˆä¿æŒåŸé…ç½®ï¼‰ */
+        /* Í¼±íÑÕÉ«£¨±£³ÖÔ­ÅäÖÃ£© */
         class GraphColors /
             "gheader" = cx000000;
         
-        /* è¡¨æ ¼æ ·å¼ï¼ˆä¿æŒåŸé…ç½®ï¼‰ */
+        /* ±í¸ñÑùÊ½£¨±£³ÖÔ­ÅäÖÃ£© */
         replace table from output /
             frame=hsides;
         
-        /* é¢œè‰²åˆ—è¡¨ï¼ˆä¿æŒåŸé…ç½®ï¼‰ */
+        /* ÑÕÉ«ÁĞ±í£¨±£³ÖÔ­ÅäÖÃ£© */
         replace color_list / 'bgh'=white;
         
-        /* æ–‡æ¡£è¾¹è·ï¼ˆä¿æŒåŸé…ç½®ï¼‰ */
+        /* ÎÄµµ±ß¾à£¨±£³ÖÔ­ÅäÖÃ£© */
         replace body from document /
             bottommargin = 20mm
             topmargin = 20mm
@@ -103,7 +103,7 @@ run;
     subject_naming=Subject,
     cohort_name=,
     randomization_version=,
-    simulation_label=%str(æ¨¡æ‹Ÿ/æµ‹è¯•ç”¨)
+    simulation_label=%str(Ä£Äâ/²âÊÔÓÃ)
 );
     %local
         _rt_table_type _rt_dataset _rt_seed_dataset _rt_method
@@ -230,10 +230,10 @@ run;
         quit;
     %end;
 
-    %if %upcase(&_rt_method)=SIMPLE and &_rt_has_strata > 0 %then %let _rt_method_display=åˆ†å±‚éšæœº;
-    %else %if %upcase(&_rt_method)=BLOCK and &_rt_has_strata > 0 %then %let _rt_method_display=åˆ†å±‚åŒºç»„éšæœº;
-    %else %if %upcase(&_rt_method)=SIMPLE %then %let _rt_method_display=ç®€å•éšæœº;
-    %else %if %upcase(&_rt_method)=BLOCK %then %let _rt_method_display=åŒºç»„éšæœº;
+    %if %upcase(&_rt_method)=SIMPLE and &_rt_has_strata > 0 %then %let _rt_method_display=·Ö²ãËæ»ú;
+    %else %if %upcase(&_rt_method)=BLOCK and &_rt_has_strata > 0 %then %let _rt_method_display=·Ö²ãÇø×éËæ»ú;
+    %else %if %upcase(&_rt_method)=SIMPLE %then %let _rt_method_display=¼òµ¥Ëæ»ú;
+    %else %if %upcase(&_rt_method)=BLOCK %then %let _rt_method_display=Çø×éËæ»ú;
     %else %let _rt_method_display=&_rt_method;
 
     %let _rt_seed_text=;
@@ -241,7 +241,7 @@ run;
     %let _rt_date_text=;
     %if %sysfunc(exist(rtcohrt.&_rt_seed_dataset)) %then %do;
         %if &_rt_has_strata > 0 %then %do;
-            %let _rt_seed_text=Generated independently by stratum; see seed audit dataset;
+            %let _rt_seed_text=%str(¸÷·Ö²ã¶ÀÁ¢Éú³É£¬¼û¸÷·Ö²ã±í¸ñÏÂ·½×¢ÊÍ);
             proc sql noprint outobs=1;
                 select Production_Date_Character into :_rt_date_text trimmed
                 from rtcohrt.&_rt_seed_dataset
@@ -273,8 +273,8 @@ run;
 
     %if %sysevalf(%superq(_rt_date_text)=, boolean) %then %let _rt_date_text=%sysfunc(today(), yymmdd10.);
 
-    %if &_rt_table_type=SUBJECT %then %let _rt_report_type_title=&_rt_subject_naming.éšæœºè¡¨;
-    %else %let _rt_report_type_title=è¯ç‰©éšæœºè¡¨;
+    %if &_rt_table_type=SUBJECT %then %let _rt_report_type_title=&_rt_subject_naming.Ëæ»ú±í;
+    %else %let _rt_report_type_title=Ò©ÎïËæ»ú±í;
 
     proc sort data=rtcohrt.&_rt_dataset out=work._rt_report_data;
         %if &_rt_has_strata > 0 %then %do;
@@ -311,23 +311,23 @@ run;
         ods rtf text= "^R/RTF'\b\pard \qc \fs24'&_rt_cohort_name.^R/RTF'\par'";
     %end;
 
-    ods rtf text= "æ–¹æ¡ˆç¼–å·ï¼š &_rt_protocol_sn.";
-    ods rtf text= "ç”³åŠå•ä½ï¼š&_rt_sponsor.";
-    ods rtf text= "äº§ç”Ÿæ—¥æœŸï¼š &_rt_date_text.";
-    ods rtf text= "éšæœºåˆ†é…æ–¹æ³•ï¼š&_rt_method_display.";
-    ods rtf text= "éšæœºç§å­æ•°ï¼š&_rt_seed_text.";
-    ods rtf text= "éšæœºåˆ†é…æ¯”ä¾‹ï¼š&_rt_group_names. = &_rt_allocation_display.";
+    ods rtf text= "·½°¸±àºÅ£º &_rt_protocol_sn.";
+    ods rtf text= "Éê°ìµ¥Î»£º&_rt_sponsor.";
+    ods rtf text= "²úÉúÈÕÆÚ£º &_rt_date_text.";
+    ods rtf text= "Ëæ»ú·ÖÅä·½·¨£º&_rt_method_display.";
+    ods rtf text= "Ëæ»úÖÖ×ÓÊı£º&_rt_seed_text.";
+    ods rtf text= "Ëæ»ú·ÖÅä±ÈÀı£º&_rt_group_names. = &_rt_allocation_display.";
 
     %if %upcase(&_rt_method)=BLOCK %then %do;
-        ods rtf text= "åŒºç»„é•¿åº¦ï¼š &_rt_block_length.";
+        ods rtf text= "Çø×é³¤¶È£º &_rt_block_length.";
     %end;
 
     %if &_rt_has_strata > 0 %then %do;
-        title4 "å±‚å·ï¼š #byval(Stratum_No)  å±‚åï¼š #byval(Stratum_Label)";
+        title4 "²ãºÅ£º #byval(Stratum_No)  ²ãÃû£º #byval(Stratum_Label)";
     %end;
 
     footnote
-        J=L FONT=Tahoma HEIGHT=2.5 "ä¿å¯†"
+        J=L FONT=Tahoma HEIGHT=2.5 "±£ÃÜ"
         J=C FONT=Tahoma HEIGHT=2.5 " Page ^{THISPAGE} of ^{LASTPAGE}"
         J=R FONT=Tahoma HEIGHT=2.5 "&simulation_label.";
 
@@ -366,38 +366,38 @@ run;
         %end;
 
         %if &_rt_table_type=SUBJECT %then %do;
-            define Rand_ID / display "&_rt_subject_naming.éšæœºå·" center style(column)={cellwidth=1.1in};
+            define Rand_ID / display "&_rt_subject_naming.Ëæ»úºÅ" center style(column)={cellwidth=1.1in};
             %if &_rt_has_sub_id > 0 %then %do;
-                define Rand_Sub_ID / display "æ›¿è¡¥&_rt_subject_naming.éšæœºå·" center style(column)={cellwidth=1.5in};
+                define Rand_Sub_ID / display "Ìæ²¹&_rt_subject_naming.Ëæ»úºÅ" center style(column)={cellwidth=1.5in};
             %end;
-            define Treatment_Group / display width=30 "ç»„åˆ«" center style(column)={cellwidth=10%};
+            define Treatment_Group / display width=30 "×é±ğ" center style(column)={cellwidth=10%};
         %end;
         %else %do;
-            define Rand_ID / display "è¯ç‰©ç¼–å·" center style(column)={cellwidth=1.5in};
-            define Treatment_Group / display width=30 "ç»„åˆ«" center style(column)={cellwidth=1.5in};
+            define Rand_ID / display "Ò©Îï±àºÅ" center style(column)={cellwidth=1.5in};
+            define Treatment_Group / display width=30 "×é±ğ" center style(column)={cellwidth=1.5in};
         %end;
 
         %if %upcase(&_rt_method)=BLOCK and &_rt_has_strata > 0 %then %do;
-            define Stratum_No / display "å±‚å·" center style(column)={cellwidth=0.6in};
-            define Block_No / display "å±‚å†…åŒºç»„å·" center style(column)={cellwidth=1.0in};
-            define Position_In_Block / display "åŒºç»„å†…æ’åºå·" center style(column)={cellwidth=1.1in};
+            define Stratum_No / display "²ãºÅ" center style(column)={cellwidth=0.6in};
+            define Block_No / display "²ãÄÚÇø×éºÅ" center style(column)={cellwidth=1.0in};
+            define Position_In_Block / display "Çø×éÄÚÅÅĞòºÅ" center style(column)={cellwidth=1.1in};
         %end;
         %else %if %upcase(&_rt_method)=BLOCK %then %do;
-            define Block_No / display "åŒºç»„å·" center style(column)={cellwidth=10%};
-            define Position_In_Block / display "åŒºç»„å†…æ’åºå·" center style(column)={cellwidth=1.1in};
+            define Block_No / display "Çø×éºÅ" center style(column)={cellwidth=10%};
+            define Position_In_Block / display "Çø×éÄÚÅÅĞòºÅ" center style(column)={cellwidth=1.1in};
         %end;
 
     run;
 
     %if &_rt_has_strata > 0 %then %do;
-        ods rtf text= "æ³¨ï¼šåœ¨åˆ†å±‚éšæœºåŒ–ä¸­ï¼Œæ¯ä¸ªåˆ†å±‚å‡æœ‰ç‹¬ç«‹ç”Ÿæˆçš„éšæœºç§å­ã€‚éšæœºç§å­ã€ç›¸å¯¹æ—¶é—´å’Œç”Ÿæˆæ—¶é—´è®°å½•äº &_rt_seed_dataset. æ•°æ®é›†ä¸­ã€‚";
+        ods rtf text= "×¢£ºÔÚ·Ö²ãËæ»ú»¯ÖĞ£¬Ã¿¸ö·Ö²ã¾ùÓĞ¶ÀÁ¢Éú³ÉµÄËæ»úÖÖ×Ó¡£Ëæ»úÖÖ×Ó¡¢Ïà¶ÔÊ±¼äºÍÉú³ÉÊ±¼ä¼ÇÂ¼ÓÚ &_rt_seed_dataset. Êı¾İ¼¯ÖĞ¡£";
     %end;
     %else %do;
-        ods rtf text= "æ³¨ï¼šéšæœºç§å­ç”±å½“å‰ SAS ç³»ç»Ÿç›¸å¯¹æ—¶é—´ï¼ˆä»¥ç§’ä¸ºå•ä½ï¼‰çš„æœ€åå…­ä½æ•°å­—ç”Ÿæˆã€‚å½“å‰ç›¸å¯¹æ—¶é—´ä¸º &_rt_datetime_text.ï¼Œæ•…éšæœºç§å­æ•°ä¸º&_rt_seed_text..";
+        ods rtf text= "×¢£ºËæ»úÖÖ×ÓÓÉµ±Ç° SAS ÏµÍ³Ïà¶ÔÊ±¼ä£¨ÒÔÃëÎªµ¥Î»£©µÄ×îºóÁùÎ»Êı×ÖÉú³É¡£µ±Ç°Ïà¶ÔÊ±¼äÎª &_rt_datetime_text.£¬¹ÊËæ»úÖÖ×ÓÊıÎª&_rt_seed_text..";
     %end;
 
-    ods rtf text= "^R/RTF'\b\pard \ql \fs24'åˆ¶ä½œå•ä½: &_rt_producer.^R/RTF'\par'";
-    ods rtf text= "^R/RTF'\b\pard \ql \fs24'éšæœºåŒ–æ–¹æ¡ˆç‰ˆæœ¬å·ï¼š &_rt_randomization_version.^R/RTF'\par'";
+    ods rtf text= "^R/RTF'\b\pard \ql \fs24'ÖÆ×÷µ¥Î»: &_rt_producer.^R/RTF'\par'";
+    ods rtf text= "^R/RTF'\b\pard \ql \fs24'Ëæ»ú»¯·½°¸°æ±¾ºÅ£º &_rt_randomization_version.^R/RTF'\par'";
 
     ods rtf close;
     ods listing;

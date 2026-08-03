@@ -65,24 +65,30 @@
     %end;
 
     /*
-     * The integer portion is used deliberately: each decimal seed is the
-     * last six digits of elapsed system seconds.  A zero result is changed
-     * to one because PROC PLAN requires a positive seed.
-     * Pause before AUTO generation so consecutive cohort calls do not use
-     * the same integer second.
+     * AUTO mode pauses for a random 1-3 seconds, captures the current SAS
+     * system-relative datetime, converts it to cumulative milliseconds,
+     * and uses the last six millisecond digits as the seed. A zero result
+     * is changed to one because PROC PLAN requires a positive seed.
      */
     data _null_;
-        call sleep(300, 0.01);
-    run;
+        format _produced_datetime 25.3;
 
-    data _null_;
+        /* Random sleep 1-3 seconds before capturing system time. */
+        _sleep_time = 1 + rand("uniform") * 2;
+        _rc = sleep(_sleep_time, 1);
+
         _produced_datetime=datetime();
-		_relative_time=round(_produced_datetime, 0.001);
-        _seed=mod(floor(_relative_time*10), 1000000);
+        _relative_time=round(_produced_datetime, 0.001);
+
+        /* Convert SAS system-relative datetime to cumulative milliseconds. */
+        _datetime_int=floor(_produced_datetime * 1000);
+
+        /* Use the last six millisecond digits as the seed. */
+        _seed=mod(_datetime_int, 1000000);
         if _seed=0 then _seed=1;
 
         call symputx("&out_seed_var", _seed, 'g');
-        call symputx("&out_relative_time_var", _relative_time, 'g');
+        call symputx("&out_relative_time_var", strip(put(_relative_time, 20.3)), 'g');
         call symputx("&out_date_var",
                      put(datepart(_produced_datetime), yymmdd10.), 'g');
         call symputx("&out_datetime_var",
